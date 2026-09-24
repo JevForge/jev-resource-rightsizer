@@ -1,7 +1,8 @@
-import { summarizeValues } from '../utils/stats.js';
+import { summarizeTrend, summarizeValues } from '../utils/stats.js';
 import { makeResource } from './resource.js';
 import type { CollectResult, ConnectorFetch } from './types.js';
 import type { EnvironmentName, MetricKind, MetricUnit } from '../schemas/enums.js';
+import type { MetricTrend } from '../schemas/metrics.js';
 import { withRetry } from '../utils/retry.js';
 import { actionError } from '../utils/errors.js';
 import { normalizeMetricValues } from './units.js';
@@ -74,6 +75,7 @@ export async function collectPrometheus(options: PrometheusCollectOptions): Prom
     unit: MetricUnit;
     source_unit?: MetricUnit;
     normalization?: 'identity' | 'ratio_to_percent';
+    trend?: MetricTrend;
     source: 'prometheus';
     stats: ReturnType<typeof summarizeValues>;
     minSampleCount: number;
@@ -123,6 +125,7 @@ export async function collectPrometheus(options: PrometheusCollectOptions): Prom
         unit: normalized.unit,
         source_unit: normalized.source_unit,
         normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
         source: 'prometheus',
         stats,
         minSampleCount: options.minSampleCount,

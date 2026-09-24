@@ -1,4 +1,4 @@
-import { summarizeValues } from '../utils/stats.js';
+import { summarizeTrend, summarizeValues } from '../utils/stats.js';
 import { makeResource } from './resource.js';
 import type { CollectResult, ConnectorFetch } from './types.js';
 import type { EnvironmentName } from '../schemas/enums.js';
@@ -127,6 +127,7 @@ export async function collectGcpMonitoring(options: GcpMonitoringCollectOptions)
         unit: normalized.unit,
         source_unit: normalized.source_unit,
         normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
         source: 'gcp-monitoring' as const,
         stats,
         minSampleCount: options.minSampleCount,

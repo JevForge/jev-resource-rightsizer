@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## 0.1.10 — 2026-09-24
+
+### Added
+
+* Add ordered metric trend slope/window evidence and `TREND_RISING` / `TREND_FALLING` reasons.
+* Add typed optional cost impact estimates derived from `cost_hourly` / `cost_monthly`.
+
 ## 0.1.9 — 2026-09-24
 
 ### Added

@@ -1,4 +1,4 @@
-import { summarizeValues } from '../utils/stats.js';
+import { summarizeTrend, summarizeValues } from '../utils/stats.js';
 import { makeResource } from './resource.js';
 import type { CollectResult } from './types.js';
 import { normalizeMetricValues, inferMetricKind } from './units.js';
@@ -102,6 +102,7 @@ export async function collectCloudWatch(options: CloudWatchCollectOptions): Prom
         unit: normalized.unit,
         source_unit: normalized.source_unit,
         normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
         source: 'cloudwatch' as const,
         stats: { ...stats, max: Number.isFinite(max) ? max : stats.max, min: Number.isFinite(min) ? min : stats.min },
         minSampleCount: options.minSampleCount,

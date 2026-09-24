@@ -5,6 +5,7 @@ import { actionError } from '../utils/errors.js';
 import type { CollectResult } from './types.js';
 import { activeResources, applyResourceFilters, type ResourceFilter } from './filters.js';
 import type { PerResourceRecommendation } from '../schemas/decision.js';
+import { estimateCostImpact, monthlyCost, type CostImpact } from './cost.js';
 
 export interface RightsizingReport {
   environment: EnvironmentName;
@@ -24,6 +25,8 @@ export interface RightsizingReport {
   memory_avg: number | null;
   request_avg: number | null;
   cost_hourly: number | null;
+  cost_monthly: number | null;
+  cost_impact: CostImpact | null;
 }
 
 function metricAvg(resource: ResourceEvidence, kind: MetricKind): number | null {
@@ -63,6 +66,8 @@ export function factualReasonCodes(
       codes.push('PARTIAL_METRICS');
       codes.push('INSUFFICIENT_SAMPLES');
     }
+    if (resource.metrics.some(metric => metric.trend?.direction === 'rising')) codes.push('TREND_RISING');
+    if (resource.metrics.some(metric => metric.trend?.direction === 'falling')) codes.push('TREND_FALLING');
     if (cpu != null && cpu <= thresholds.scale_down_cpu_pct) {
       codes.push('CPU_UNDERUTILIZED');
       codes.push('THRESHOLD_SCALE_DOWN');
@@ -135,7 +140,7 @@ export function heuristicRecommendation(
   thresholds: Thresholds,
   resources: ResourceEvidence[],
 ): Recommendation {
-  if (reasons.includes('MIXED_SIGNALS') || reasons.includes('SPIKE_DETECTED')) return 'review';
+  if (reasons.includes('MIXED_SIGNALS')) return 'review';
   if (
     reasons.includes('INSUFFICIENT_SAMPLES') ||
     reasons.includes('PARTIAL_METRICS') ||
@@ -155,6 +160,10 @@ export function heuristicRecommendation(
     reasons.includes('MEMORY_UNDERUTILIZED') ||
     reasons.includes('REQUEST_LOAD_LOW') ||
     reasons.includes('THRESHOLD_SCALE_DOWN');
+  if (
+    reasons.includes('SPIKE_DETECTED') &&
+    !((reasons.includes('TREND_RISING') && scaleUp) || (reasons.includes('TREND_FALLING') && scaleDown))
+  ) return 'review';
   if (scaleUp && !scaleDown) return 'scale-up';
   if (scaleDown && !scaleUp) return 'scale-down';
   if (scaleUp && scaleDown) return 'review';
@@ -258,5 +267,7 @@ export function aggregateReport(input: {
     memory_avg: metricAvg(primary, 'memory'),
     request_avg: metricAvg(primary, 'requests'),
     cost_hourly: primary.cost_hourly ?? metricAvg(primary, 'cost'),
+    cost_monthly: monthlyCost(decisionResources),
+    cost_impact: estimateCostImpact(heuristic_recommendation, decisionResources),
   };
 }

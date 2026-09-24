@@ -8,7 +8,7 @@ import type {
   ResourceKind,
   SignalStrength,
 } from '../schemas/enums.js';
-import type { MetricSeries, ResourceEvidence } from '../schemas/metrics.js';
+import type { MetricSeries, MetricTrend, ResourceEvidence } from '../schemas/metrics.js';
 
 export interface MetricDraft {
   kind: MetricKind;
@@ -16,6 +16,7 @@ export interface MetricDraft {
   unit: MetricUnit;
   source_unit?: MetricUnit;
   normalization?: MetricNormalization;
+  trend?: MetricTrend;
   source: MetricSource;
   stats: {
     avg: number | null;
@@ -64,6 +65,7 @@ export function makeMetric(draft: MetricDraft): MetricSeries {
     unit: draft.unit,
     ...(draft.source_unit ? { source_unit: draft.source_unit } : {}),
     ...(draft.normalization ? { normalization: draft.normalization } : {}),
+    ...(draft.trend ? { trend: draft.trend } : {}),
     source: draft.source,
     stats: {
       avg: draft.stats.avg,

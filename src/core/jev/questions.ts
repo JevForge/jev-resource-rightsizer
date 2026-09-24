@@ -35,6 +35,8 @@ export function buildEvaluationState(report: RightsizingReport): RightsizingEval
     memory_avg: report.memory_avg,
     request_avg: report.request_avg,
     cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: report.cost_impact,
     partial_count: report.partial_count,
     insufficient_count: report.insufficient_count,
     sources: report.sources,

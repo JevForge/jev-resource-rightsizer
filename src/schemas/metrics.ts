@@ -34,6 +34,16 @@ export const MetricStatsSchema = z
 
 export type MetricStats = z.infer<typeof MetricStatsSchema>;
 
+export const MetricTrendSchema = z
+  .object({
+    slope: z.number().finite(),
+    window_sample_count: z.number().int().nonnegative(),
+    direction: z.enum(['rising', 'falling', 'flat']),
+  })
+  .strict();
+
+export type MetricTrend = z.infer<typeof MetricTrendSchema>;
+
 export const MetricSeriesSchema = z
   .object({
     id: z.string().min(1).max(256),
@@ -44,6 +54,7 @@ export const MetricSeriesSchema = z
     normalization: z.enum(METRIC_NORMALIZATIONS).optional(),
     source: z.enum(METRIC_SOURCES),
     stats: MetricStatsSchema,
+    trend: MetricTrendSchema.optional(),
     partial: z.boolean(),
     signal: z.enum(SIGNAL_STRENGTHS),
   })

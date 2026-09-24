@@ -11,7 +11,7 @@ Teams often guess at instance and container sizes. Underutilized fleets waste mo
 
 ```yaml
 - id: size
-  uses: JevForge/jev-resource-rightsizer@v0.1.9
+  uses: JevForge/jev-resource-rightsizer@v0.1.10
   env:
     AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
   with:
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.9
+        uses: JevForge/jev-resource-rightsizer@v0.1.10
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -115,7 +115,7 @@ jobs:
           echo "summary=${{ steps.size.outputs.summary }}"
 ```
 
-Pin `@v0.1.9` for reproducibility, or `@v0` for the floating major line.
+Pin `@v0.1.10` for reproducibility, or `@v0` for the floating major line.
 
 ## Complete Example
 
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.9
+        uses: JevForge/jev-resource-rightsizer@v0.1.10
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -258,6 +258,9 @@ Full metadata: [`action.yml`](action.yml). Connectors: [`docs/connectors.md`](do
 | `heuristic_recommendation` | Deterministic baseline before Jev |
 | `per_resource_recommendations` | JSON array with a deterministic recommendation, reasons, and exclusion flag per resource |
 | `threshold_profile` | Selected threshold preset used to resolve defaults |
+| `cost_hourly` | Aggregated hourly cost signal, if present |
+| `cost_monthly` | Aggregated monthly cost signal or a 730-hour projection |
+| `cost_impact` | JSON estimate using a 20% reduction/increase factor; `null` without cost or scale recommendation |
 | `decision_json_path` | Path written when requested, else empty |
 | `sarif_path` | Path written when requested, else empty |
 
@@ -350,7 +353,7 @@ See [`SECURITY.md`](SECURITY.md).
 ## Versioning
 
 ```yaml
-uses: JevForge/jev-resource-rightsizer@v0.1.9   # recommended pin
+uses: JevForge/jev-resource-rightsizer@v0.1.10   # recommended pin
 uses: JevForge/jev-resource-rightsizer@v0       # floating major (v0.x)
 ```
 

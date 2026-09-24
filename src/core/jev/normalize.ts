@@ -3,6 +3,7 @@ import { RightsizingDecisionSchema, type RightsizingDecision } from '../../schem
 import type { RightsizingReport } from '../../collectors/aggregate.js';
 import { uniq } from '../../utils/fs.js';
 import type { JevRawAnswer } from './types.js';
+import { estimateCostImpact } from '../../collectors/cost.js';
 
 export function buildSummary(
   recommendation: Recommendation,
@@ -60,6 +61,9 @@ export function normalizeAnswer(answer: JevRawAnswer, report: RightsizingReport)
       resources: report.resources,
       thresholds: report.thresholds,
       threshold_profile: report.threshold_profile,
+      cost_hourly: report.cost_hourly,
+      cost_monthly: report.cost_monthly,
+      cost_impact: null,
       summary: buildSummary('review', report, 0),
       explanation: `${buildExplanation('review', report, true)} ${answer.unavailableMessage}`.slice(0, 2_000),
       provisional: true,
@@ -97,6 +101,9 @@ export function normalizeAnswer(answer: JevRawAnswer, report: RightsizingReport)
     resources: report.resources,
     thresholds: report.thresholds,
     threshold_profile: report.threshold_profile,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(recommendation, report.resources),
     summary: buildSummary(recommendation, report, answer.confidence),
     explanation: buildExplanation(recommendation, report, false),
     provisional: answer.provisional,

@@ -16,7 +16,7 @@ jobs:
 
       - id: size
         name: Evaluate rightsizing evidence
-        uses: JevForge/jev-resource-rightsizer@v0.1.9
+        uses: JevForge/jev-resource-rightsizer@v0.1.10
         with:
           metrics_path: ops/metrics.json
           comment_on_github: 'true'

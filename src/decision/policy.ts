@@ -3,6 +3,7 @@ import { RightsizingDecisionSchema, type RightsizingDecision } from '../schemas/
 import type { LowConfidencePolicy } from '../schemas/enums.js';
 import type { RightsizingReport } from '../collectors/aggregate.js';
 import { buildExplanation, buildSummary } from '../jev/normalize.js';
+import { estimateCostImpact } from '../collectors/cost.js';
 
 export type PolicyOutcome =
   | { status: 'ok'; decision: RightsizingDecision }
@@ -49,6 +50,9 @@ export function applyRightsizingPolicy(
     resources: report.resources,
     supporting_metrics: report.resources.flatMap(resource => resource.metrics),
     per_resource_recommendations: report.per_resource_recommendations,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(parsed.recommendation, report.resources),
   };
 
   if (
@@ -104,6 +108,9 @@ export function applyRightsizingPolicy(
     resources: report.resources,
     supporting_metrics: report.resources.flatMap(resource => resource.metrics),
     per_resource_recommendations: report.per_resource_recommendations,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(current.recommendation, report.resources),
     reason_codes: [...reasons].slice(0, 24),
   });
 

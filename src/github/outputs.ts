@@ -26,6 +26,9 @@ export function writeDecisionOutputs(writer: ActionOutputWriter, decision: Right
   writer.setOutput('insufficient_count', String(decision.insufficient_count));
   writer.setOutput('heuristic_recommendation', decision.heuristic_recommendation);
   writer.setOutput('threshold_profile', decision.threshold_profile);
+  writer.setOutput('cost_hourly', decision.cost_hourly == null ? '' : String(decision.cost_hourly));
+  writer.setOutput('cost_monthly', decision.cost_monthly == null ? '' : String(decision.cost_monthly));
+  writer.setOutput('cost_impact', JSON.stringify(decision.cost_impact));
   writer.setOutput('per_resource_recommendations', JSON.stringify(decision.per_resource_recommendations));
 }
 

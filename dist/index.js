@@ -65965,6 +65965,11 @@ var MetricStatsSchema = external_exports.object({
   max: external_exports.number().finite().nullable().optional(),
   sample_count: external_exports.number().int().nonnegative()
 }).strict();
+var MetricTrendSchema = external_exports.object({
+  slope: external_exports.number().finite(),
+  window_sample_count: external_exports.number().int().nonnegative(),
+  direction: external_exports.enum(["rising", "falling", "flat"])
+}).strict();
 var MetricSeriesSchema = external_exports.object({
   id: external_exports.string().min(1).max(256),
   kind: external_exports.enum(METRIC_KINDS),
@@ -65974,6 +65979,7 @@ var MetricSeriesSchema = external_exports.object({
   normalization: external_exports.enum(METRIC_NORMALIZATIONS).optional(),
   source: external_exports.enum(METRIC_SOURCES),
   stats: MetricStatsSchema,
+  trend: MetricTrendSchema.optional(),
   partial: external_exports.boolean(),
   signal: external_exports.enum(SIGNAL_STRENGTHS)
 }).strict();
@@ -66236,6 +66242,45 @@ function activeResources(resources) {
   return resources.filter((resource) => !resource.excluded);
 }
 
+// src/collectors/cost.ts
+var MONTHLY_HOURS = 730;
+var DEFAULT_REDUCTION_FACTOR = 0.2;
+function hourlyCost(resource) {
+  const metric = resource.metrics.find((item) => item.kind === "cost" && item.stats.avg != null);
+  const value = resource.cost_hourly ?? metric?.stats.avg ?? null;
+  return value != null && Number.isFinite(value) && value >= 0 ? value : null;
+}
+function monthlyCost(resources) {
+  let total = 0;
+  let found = false;
+  for (const resource of resources) {
+    const monthly = resource.cost_monthly;
+    if (monthly != null && Number.isFinite(monthly) && monthly >= 0) {
+      total += monthly;
+      found = true;
+      continue;
+    }
+    const hourly = hourlyCost(resource);
+    if (hourly != null) {
+      total += hourly * MONTHLY_HOURS;
+      found = true;
+    }
+  }
+  return found ? total : null;
+}
+function estimateCostImpact(recommendation, resources, reductionFactor = DEFAULT_REDUCTION_FACTOR) {
+  if (recommendation !== "scale-down" && recommendation !== "scale-up") return null;
+  const monthly = monthlyCost(resources);
+  if (monthly == null) return null;
+  const direction = recommendation === "scale-down" ? 1 : -1;
+  return {
+    basis: "monthly_cost_x_reduction_factor",
+    estimated_monthly_impact: Number((monthly * reductionFactor * direction).toFixed(2)),
+    reduction_factor: reductionFactor,
+    is_estimate: true
+  };
+}
+
 // src/collectors/aggregate.ts
 function metricAvg(resource, kind) {
   const metric = resource.metrics.find((item) => item.kind === kind && item.stats.avg != null);
@@ -66265,6 +66310,8 @@ function factualReasonCodes(resources, thresholds, environment, sources) {
       codes.push("PARTIAL_METRICS");
       codes.push("INSUFFICIENT_SAMPLES");
     }
+    if (resource.metrics.some((metric) => metric.trend?.direction === "rising")) codes.push("TREND_RISING");
+    if (resource.metrics.some((metric) => metric.trend?.direction === "falling")) codes.push("TREND_FALLING");
     if (cpu != null && cpu <= thresholds.scale_down_cpu_pct) {
       codes.push("CPU_UNDERUTILIZED");
       codes.push("THRESHOLD_SCALE_DOWN");
@@ -66320,7 +66367,7 @@ function factualReasonCodes(resources, thresholds, environment, sources) {
   return uniq(codes);
 }
 function heuristicRecommendation(reasons, thresholds, resources) {
-  if (reasons.includes("MIXED_SIGNALS") || reasons.includes("SPIKE_DETECTED")) return "review";
+  if (reasons.includes("MIXED_SIGNALS")) return "review";
   if (reasons.includes("INSUFFICIENT_SAMPLES") || reasons.includes("PARTIAL_METRICS") || resources.every(
     (resource) => resource.metrics.every((metric) => metric.signal === "insufficient" || metric.signal === "weak")
   )) {
@@ -66328,6 +66375,7 @@ function heuristicRecommendation(reasons, thresholds, resources) {
   }
   const scaleUp = reasons.includes("CPU_SATURATED") || reasons.includes("MEMORY_PRESSURE") || reasons.includes("REQUEST_LOAD_HIGH") || reasons.includes("THRESHOLD_SCALE_UP");
   const scaleDown = reasons.includes("CPU_UNDERUTILIZED") || reasons.includes("MEMORY_UNDERUTILIZED") || reasons.includes("REQUEST_LOAD_LOW") || reasons.includes("THRESHOLD_SCALE_DOWN");
+  if (reasons.includes("SPIKE_DETECTED") && !(reasons.includes("TREND_RISING") && scaleUp || reasons.includes("TREND_FALLING") && scaleDown)) return "review";
   if (scaleUp && !scaleDown) return "scale-up";
   if (scaleDown && !scaleUp) return "scale-down";
   if (scaleUp && scaleDown) return "review";
@@ -66415,7 +66463,9 @@ function aggregateReport(input) {
     cpu_avg: metricAvg(primary, "cpu"),
     memory_avg: metricAvg(primary, "memory"),
     request_avg: metricAvg(primary, "requests"),
-    cost_hourly: primary.cost_hourly ?? metricAvg(primary, "cost")
+    cost_hourly: primary.cost_hourly ?? metricAvg(primary, "cost"),
+    cost_monthly: monthlyCost(decisionResources),
+    cost_impact: estimateCostImpact(heuristic_recommendation, decisionResources)
   };
 }
 
@@ -66438,6 +66488,7 @@ function makeMetric(draft) {
     unit: draft.unit,
     ...draft.source_unit ? { source_unit: draft.source_unit } : {},
     ...draft.normalization ? { normalization: draft.normalization } : {},
+    ...draft.trend ? { trend: draft.trend } : {},
     source: draft.source,
     stats: {
       avg: draft.stats.avg,
@@ -66465,6 +66516,52 @@ function makeResource(draft) {
     metrics: draft.metrics.map(makeMetric),
     cost_hourly: draft.cost_hourly ?? null,
     cost_monthly: draft.cost_monthly ?? null
+  };
+}
+
+// src/utils/stats.ts
+function defaultWindow(now = /* @__PURE__ */ new Date()) {
+  const end2 = now.toISOString();
+  const startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1e3);
+  return { start: startDate.toISOString(), end: end2 };
+}
+function percentile(sorted, p3) {
+  if (!sorted.length) return null;
+  if (sorted.length === 1) return sorted[0];
+  const rank = p3 / 100 * (sorted.length - 1);
+  const low = Math.floor(rank);
+  const high = Math.ceil(rank);
+  if (low === high) return sorted[low];
+  const weight = rank - low;
+  return sorted[low] * (1 - weight) + sorted[high] * weight;
+}
+function summarizeValues(values) {
+  const finite = values.filter((value) => Number.isFinite(value)).sort((a5, b5) => a5 - b5);
+  if (!finite.length) {
+    return { avg: null, p50: null, p95: null, p99: null, min: null, max: null, sample_count: 0 };
+  }
+  const sum = finite.reduce((acc, value) => acc + value, 0);
+  return {
+    avg: sum / finite.length,
+    p50: percentile(finite, 50),
+    p95: percentile(finite, 95),
+    p99: percentile(finite, 99),
+    min: finite[0],
+    max: finite[finite.length - 1],
+    sample_count: finite.length
+  };
+}
+function summarizeTrend(values) {
+  if (values.length < 2) return { slope: 0, window_sample_count: values.length, direction: "flat" };
+  const first = values[0];
+  const last = values[values.length - 1];
+  const slope = (last - first) / (values.length - 1);
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const threshold = Math.max(Math.abs(average) * 0.05, 0.01);
+  return {
+    slope,
+    window_sample_count: values.length,
+    direction: slope > threshold ? "rising" : slope < -threshold ? "falling" : "flat"
   };
 }
 
@@ -66537,7 +66634,7 @@ function defaultUnit(kind) {
       return "other";
   }
 }
-function summarizeValues(values) {
+function summarizeValues2(values) {
   const sorted = [...values].sort((a5, b5) => a5 - b5);
   const sum = sorted.reduce((acc, value) => acc + value, 0);
   const at = (p3) => {
@@ -66559,7 +66656,7 @@ function summarizeValues(values) {
   };
 }
 function toMetricDraft(metric, minSampleCount) {
-  const fromValues = metric.values?.length ? summarizeValues(metric.values) : null;
+  const fromValues = metric.values?.length ? summarizeValues2(metric.values) : null;
   return {
     kind: metric.kind,
     name: metric.name ?? metric.kind,
@@ -66575,6 +66672,7 @@ function toMetricDraft(metric, minSampleCount) {
       sample_count: metric.sample_count ?? fromValues?.sample_count ?? (metric.avg != null ? minSampleCount : 0)
     },
     partial: metric.partial,
+    trend: metric.values?.length ? summarizeTrend(metric.values) : void 0,
     minSampleCount
   };
 }
@@ -66652,39 +66750,6 @@ function parseNormalizedMetrics(document2, options) {
   };
 }
 
-// src/utils/stats.ts
-function defaultWindow(now = /* @__PURE__ */ new Date()) {
-  const end2 = now.toISOString();
-  const startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1e3);
-  return { start: startDate.toISOString(), end: end2 };
-}
-function percentile(sorted, p3) {
-  if (!sorted.length) return null;
-  if (sorted.length === 1) return sorted[0];
-  const rank = p3 / 100 * (sorted.length - 1);
-  const low = Math.floor(rank);
-  const high = Math.ceil(rank);
-  if (low === high) return sorted[low];
-  const weight = rank - low;
-  return sorted[low] * (1 - weight) + sorted[high] * weight;
-}
-function summarizeValues2(values) {
-  const finite = values.filter((value) => Number.isFinite(value)).sort((a5, b5) => a5 - b5);
-  if (!finite.length) {
-    return { avg: null, p50: null, p95: null, p99: null, min: null, max: null, sample_count: 0 };
-  }
-  const sum = finite.reduce((acc, value) => acc + value, 0);
-  return {
-    avg: sum / finite.length,
-    p50: percentile(finite, 50),
-    p95: percentile(finite, 95),
-    p99: percentile(finite, 99),
-    min: finite[0],
-    max: finite[finite.length - 1],
-    sample_count: finite.length
-  };
-}
-
 // src/collectors/units.ts
 function isPercentageKind(kind) {
   return kind === "cpu" || kind === "memory" || kind === "disk";
@@ -66754,7 +66819,7 @@ async function collectCloudWatch(options) {
       const nativeUnit = query.unit ?? points.find((point) => point.Unit)?.Unit;
       const averages = points.map((point) => point.Average).filter((value) => value != null && Number.isFinite(value));
       const normalized = query.unit ? { values: averages, unit: query.unit, source_unit: query.unit, normalization: "identity" } : normalizeMetricValues(averages, kind, nativeUnit);
-      const stats = summarizeValues2(normalized.values);
+      const stats = summarizeValues(normalized.values);
       const maximums = points.map((point) => point.Maximum).filter((value) => value != null && Number.isFinite(value));
       const minimums = points.map((point) => point.Minimum).filter((value) => value != null && Number.isFinite(value));
       const normalizedMaximum = query.unit ? maximums : normalizeMetricValues(maximums, kind, nativeUnit).values;
@@ -66768,6 +66833,7 @@ async function collectCloudWatch(options) {
         unit: normalized.unit,
         source_unit: normalized.source_unit,
         normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
         source: "cloudwatch",
         stats: { ...stats, max: Number.isFinite(max) ? max : stats.max, min: Number.isFinite(min) ? min : stats.min },
         minSampleCount: options.minSampleCount,
@@ -66874,7 +66940,7 @@ async function collectAzureMonitor(options) {
       const nativeUnit = entry.unit ?? (name25.toLowerCase().includes("byte") ? "bytes" : void 0);
       const averages = entry.points.map((point) => point.average).filter((value) => value != null && Number.isFinite(value));
       const normalized = normalizeMetricValues(averages, kind, nativeUnit);
-      const stats = summarizeValues2(normalized.values);
+      const stats = summarizeValues(normalized.values);
       const maximums = entry.points.map((point) => point.maximum).filter((value) => value != null && Number.isFinite(value));
       const minimums = entry.points.map((point) => point.minimum).filter((value) => value != null && Number.isFinite(value));
       const max = normalizeMetricValues(maximums, kind, nativeUnit).values;
@@ -66886,6 +66952,7 @@ async function collectAzureMonitor(options) {
         unit: normalized.unit,
         source_unit: normalized.source_unit,
         normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
         source: "azure-monitor",
         stats: {
           ...stats,
@@ -67015,7 +67082,7 @@ async function collectGcpMonitoring(options) {
       const lowerMetricType = metricType.toLowerCase();
       const inferredUnit = lowerMetricType.includes("byte") ? "bytes" : lowerMetricType.includes("utilization") && kind !== "custom" ? "1" : void 0;
       const normalized = normalizeMetricValues(entry.values, kind, entry.unit ?? inferredUnit);
-      const stats = summarizeValues2(normalized.values);
+      const stats = summarizeValues(normalized.values);
       if (!stats.sample_count) warnings.push(`GCP Monitoring returned no points for ${resourceId}/${metricType}.`);
       return {
         kind,
@@ -67023,6 +67090,7 @@ async function collectGcpMonitoring(options) {
         unit: normalized.unit,
         source_unit: normalized.source_unit,
         normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
         source: "gcp-monitoring",
         stats,
         minSampleCount: options.minSampleCount,
@@ -67098,7 +67166,7 @@ async function collectPrometheus(options) {
     const valuesByResource = parseValuesByResource(body, resourceIds[0], query.resourceLabel ?? "resource");
     for (const resourceId of resourceIds) {
       const normalized = normalizeMetricValues(valuesByResource.get(resourceId) ?? [], query.kind, query.unit);
-      const stats = summarizeValues2(normalized.values);
+      const stats = summarizeValues(normalized.values);
       if (stats.sample_count === 0) warnings.push(`Prometheus query "${query.name}" returned no samples for ${resourceId}.`);
       metricsByResource.get(resourceId)?.push({
         kind: query.kind,
@@ -67106,6 +67174,7 @@ async function collectPrometheus(options) {
         unit: normalized.unit,
         source_unit: normalized.source_unit,
         normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
         source: "prometheus",
         stats,
         minSampleCount: options.minSampleCount,
@@ -67347,6 +67416,9 @@ function writeDecisionOutputs(writer, decision) {
   writer.setOutput("insufficient_count", String(decision.insufficient_count));
   writer.setOutput("heuristic_recommendation", decision.heuristic_recommendation);
   writer.setOutput("threshold_profile", decision.threshold_profile);
+  writer.setOutput("cost_hourly", decision.cost_hourly == null ? "" : String(decision.cost_hourly));
+  writer.setOutput("cost_monthly", decision.cost_monthly == null ? "" : String(decision.cost_monthly));
+  writer.setOutput("cost_impact", JSON.stringify(decision.cost_impact));
   writer.setOutput("per_resource_recommendations", JSON.stringify(decision.per_resource_recommendations));
 }
 async function applyOutcome(writer, outcome, markdown) {
@@ -67422,6 +67494,12 @@ var PerResourceRecommendationSchema = external_exports.object({
   reason_codes: external_exports.array(external_exports.enum(REASON_CODES)).min(1).max(24),
   excluded: external_exports.boolean()
 }).strict();
+var CostImpactSchema = external_exports.object({
+  basis: external_exports.literal("monthly_cost_x_reduction_factor"),
+  estimated_monthly_impact: external_exports.number().finite(),
+  reduction_factor: external_exports.number().finite().min(0).max(1),
+  is_estimate: external_exports.literal(true)
+}).strict();
 var RightsizingDecisionSchema = external_exports.object({
   recommendation: external_exports.enum(RECOMMENDATIONS),
   confidence: external_exports.number().min(0).max(1),
@@ -67434,6 +67512,9 @@ var RightsizingDecisionSchema = external_exports.object({
   resources: external_exports.array(ResourceEvidenceSchema).max(500),
   thresholds: ThresholdsSchema,
   threshold_profile: external_exports.enum(THRESHOLD_PROFILES).default("balanced"),
+  cost_hourly: external_exports.number().finite().nullable().default(null),
+  cost_monthly: external_exports.number().finite().nullable().default(null),
+  cost_impact: CostImpactSchema.nullable().default(null),
   summary: external_exports.string().min(1).max(500),
   explanation: external_exports.string().max(2e3),
   provisional: external_exports.boolean(),
@@ -67489,6 +67570,9 @@ function normalizeAnswer(answer, report) {
       resources: report.resources,
       thresholds: report.thresholds,
       threshold_profile: report.threshold_profile,
+      cost_hourly: report.cost_hourly,
+      cost_monthly: report.cost_monthly,
+      cost_impact: null,
       summary: buildSummary("review", report, 0),
       explanation: `${buildExplanation("review", report, true)} ${answer.unavailableMessage}`.slice(0, 2e3),
       provisional: true,
@@ -67522,6 +67606,9 @@ function normalizeAnswer(answer, report) {
     resources: report.resources,
     thresholds: report.thresholds,
     threshold_profile: report.threshold_profile,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(recommendation, report.resources),
     summary: buildSummary(recommendation, report, answer.confidence),
     explanation: buildExplanation(recommendation, report, false),
     provisional: answer.provisional,
@@ -67551,7 +67638,10 @@ function applyRightsizingPolicy(decision, report, options) {
     ...parsed,
     resources: report.resources,
     supporting_metrics: report.resources.flatMap((resource) => resource.metrics),
-    per_resource_recommendations: report.per_resource_recommendations
+    per_resource_recommendations: report.per_resource_recommendations,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(parsed.recommendation, report.resources)
   };
   if (parsed.resources.length !== report.resources.length || parsed.resources.some((resource, index) => resource.id !== report.resources[index]?.id)) {
     reasons.add("RIGHTSIZING_VISIBILITY_ENFORCED");
@@ -67591,6 +67681,9 @@ function applyRightsizingPolicy(decision, report, options) {
     resources: report.resources,
     supporting_metrics: report.resources.flatMap((resource) => resource.metrics),
     per_resource_recommendations: report.per_resource_recommendations,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(current.recommendation, report.resources),
     reason_codes: [...reasons].slice(0, 24)
   });
   const lowConfidence = current.confidence < options.minConfidence || current.provisional;
@@ -82548,6 +82641,8 @@ function buildEvaluationState(report) {
     memory_avg: report.memory_avg,
     request_avg: report.request_avg,
     cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: report.cost_impact,
     partial_count: report.partial_count,
     insufficient_count: report.insufficient_count,
     sources: report.sources,

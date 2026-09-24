@@ -242,6 +242,12 @@ outputs:
     description: Deterministic baseline recommendation before Jev (scale-down, keep, scale-up, or review).
   per_resource_recommendations:
     description: JSON array of deterministic recommendations for each resource; no infrastructure mutation is performed.
+  cost_hourly:
+    description: Aggregated hourly cost signal when supplied by metrics.
+  cost_monthly:
+    description: Aggregated monthly cost signal or hourly cost projected using 730 hours.
+  cost_impact:
+    description: Optional estimated monthly impact from the recommendation; never an exact billing amount.
   decision_json_path:
     description: Path written when decision_json_path input is set, otherwise empty.
   sarif_path:
