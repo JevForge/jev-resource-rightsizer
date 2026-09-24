@@ -24,6 +24,7 @@ export function writeDecisionOutputs(writer: ActionOutputWriter, decision: Right
   writer.setOutput('sources', JSON.stringify(decision.sources));
   writer.setOutput('partial_count', String(decision.partial_count));
   writer.setOutput('insufficient_count', String(decision.insufficient_count));
+  writer.setOutput('heuristic_recommendation', decision.heuristic_recommendation);
 }
 
 export async function applyOutcome(

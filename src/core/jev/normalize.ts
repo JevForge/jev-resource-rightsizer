@@ -65,6 +65,7 @@ export function normalizeAnswer(answer: JevRawAnswer, report: RightsizingReport)
       sources: report.sources,
       partial_count: report.partial_count,
       insufficient_count: report.insufficient_count,
+      heuristic_recommendation: report.heuristic_recommendation,
     });
   }
 
@@ -99,5 +100,6 @@ export function normalizeAnswer(answer: JevRawAnswer, report: RightsizingReport)
     sources: report.sources,
     partial_count: report.partial_count,
     insufficient_count: report.insufficient_count,
+    heuristic_recommendation: report.heuristic_recommendation,
   });
 }
