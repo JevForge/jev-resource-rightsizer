@@ -247,6 +247,7 @@ Full metadata: [`action.yml`](action.yml). Connectors: [`docs/connectors.md`](do
 | `sources` | JSON metric source ids |
 | `partial_count` | Count of partial metric series |
 | `insufficient_count` | Count of weak/insufficient series |
+| `heuristic_recommendation` | Deterministic baseline before Jev |
 | `decision_json_path` | Path written when requested, else empty |
 | `sarif_path` | Path written when requested, else empty |
 

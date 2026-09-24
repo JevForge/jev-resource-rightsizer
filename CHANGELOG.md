@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 0.1.5 — 2026-09-24
+
+### Added
+
+* Expose `heuristic_recommendation` output (deterministic baseline alongside Jev's final recommendation).
+
 ## 0.1.4 — 2026-09-24
 
 ### Added

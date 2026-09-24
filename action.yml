@@ -211,6 +211,8 @@ outputs:
     description: Number of partial metric series.
   insufficient_count:
     description: Number of weak or insufficient metric series.
+  heuristic_recommendation:
+    description: Deterministic baseline recommendation before Jev (scale-down, keep, scale-up, or review).
   decision_json_path:
     description: Path written when decision_json_path input is set, otherwise empty.
   sarif_path:

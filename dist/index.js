@@ -67083,6 +67083,7 @@ function writeDecisionOutputs(writer, decision) {
   writer.setOutput("sources", JSON.stringify(decision.sources));
   writer.setOutput("partial_count", String(decision.partial_count));
   writer.setOutput("insufficient_count", String(decision.insufficient_count));
+  writer.setOutput("heuristic_recommendation", decision.heuristic_recommendation);
 }
 async function applyOutcome(writer, outcome, markdown) {
   writeDecisionOutputs(writer, outcome.decision);
@@ -67166,7 +67167,8 @@ var RightsizingDecisionSchema = external_exports.object({
   provisional: external_exports.boolean(),
   sources: external_exports.array(external_exports.string().min(1).max(64)).max(16),
   partial_count: external_exports.number().int().nonnegative(),
-  insufficient_count: external_exports.number().int().nonnegative()
+  insufficient_count: external_exports.number().int().nonnegative(),
+  heuristic_recommendation: external_exports.enum(RECOMMENDATIONS)
 }).strict();
 
 // src/core/jev/normalize.ts
@@ -67218,7 +67220,8 @@ function normalizeAnswer(answer, report) {
       provisional: true,
       sources: report.sources,
       partial_count: report.partial_count,
-      insufficient_count: report.insufficient_count
+      insufficient_count: report.insufficient_count,
+      heuristic_recommendation: report.heuristic_recommendation
     });
   }
   if (!Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1) {
@@ -67248,7 +67251,8 @@ function normalizeAnswer(answer, report) {
     provisional: answer.provisional,
     sources: report.sources,
     partial_count: report.partial_count,
-    insufficient_count: report.insufficient_count
+    insufficient_count: report.insufficient_count,
+    heuristic_recommendation: report.heuristic_recommendation
   });
 }
 

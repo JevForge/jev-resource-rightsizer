@@ -20,6 +20,7 @@ export const RightsizingDecisionSchema = z
     sources: z.array(z.string().min(1).max(64)).max(16),
     partial_count: z.number().int().nonnegative(),
     insufficient_count: z.number().int().nonnegative(),
+    heuristic_recommendation: z.enum(RECOMMENDATIONS),
   })
   .strict();
 
