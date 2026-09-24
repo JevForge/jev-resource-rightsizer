@@ -1,0 +1,25 @@
+name: Resource RightSizer
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 8 * * 1'
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  rightsizing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recommend rightsizing
+        uses: JevForge/jev-resource-rightsizer@v0
+        with:
+          metrics_path: examples/metrics.json
+          environment: production
+          dry_run: 'true'
+          create_check_run: 'false'
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

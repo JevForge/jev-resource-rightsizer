@@ -1,0 +1,8 @@
+{
+  "resource_id": "api-prod-2",
+  "service": "api",
+  "cpu": 88,
+  "memory": 82,
+  "requests": 140,
+  "cost": 0.2
+}

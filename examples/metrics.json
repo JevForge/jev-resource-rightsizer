@@ -1,0 +1,10 @@
+{
+  "resource_id": "api-prod-1",
+  "service": "api",
+  "resource_kind": "compute",
+  "current_size": "t3.large",
+  "cpu": 12,
+  "memory": 28,
+  "requests": 0.5,
+  "cost": 0.0832
+}

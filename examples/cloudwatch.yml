@@ -1,0 +1,28 @@
+name: CloudWatch rightsizing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  rightsizing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recommend from CloudWatch
+        uses: JevForge/jev-resource-rightsizer@v0
+        with:
+          cloudwatch_enabled: 'true'
+          cloudwatch_namespace: AWS/EC2
+          cloudwatch_metric_name: CPUUtilization
+          cloudwatch_dimensions: InstanceId=i-0123456789abcdef0
+          cloudwatch_resource_id: i-0123456789abcdef0
+          environment: production
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1

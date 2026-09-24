@@ -1,0 +1,8 @@
+- name: cpu
+  query: avg(rate(container_cpu_usage_seconds_total{pod=~"api-.*"}[5m])) * 100
+  kind: cpu
+  unit: percent
+- name: memory
+  query: avg(container_memory_working_set_bytes{pod=~"api-.*"}) / avg(container_spec_memory_limit_bytes{pod=~"api-.*"}) * 100
+  kind: memory
+  unit: percent

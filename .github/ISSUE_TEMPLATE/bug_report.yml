@@ -1,0 +1,25 @@
+---
+name: Bug report
+description: Report a defect in jev-resource-rightsizer
+labels: ["bug"]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Workflow snippet, metrics sample (redacted), provider, and Action version/tag.
+    validations:
+      required: true
+---

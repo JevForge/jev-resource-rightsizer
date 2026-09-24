@@ -1,0 +1,221 @@
+name: JEV Resource RightSizer
+description: Recommend scale-down, keep, scale-up, or review from resource metrics with typed Jev decisions. Never changes infrastructure.
+author: JevForge
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  metrics_path:
+    description: Workspace-relative path to normalized metrics JSON or YAML.
+    required: false
+  metrics_json:
+    description: Inline normalized metrics JSON. Do not combine with metrics_path.
+    required: false
+  environment:
+    description: Target environment (production, staging, development, sandbox, or other).
+    required: false
+    default: production
+  window_start:
+    description: Inclusive observation window start (ISO-8601). Defaults to 7 days ago UTC.
+    required: false
+  window_end:
+    description: Exclusive observation window end (ISO-8601). Defaults to now UTC.
+    required: false
+  scale_down_cpu_pct:
+    description: Average CPU percent at or below which scale-down is evidenced.
+    required: false
+    default: '20'
+  scale_up_cpu_pct:
+    description: Average CPU percent at or above which scale-up is evidenced.
+    required: false
+    default: '75'
+  scale_down_memory_pct:
+    description: Average memory percent at or below which scale-down is evidenced.
+    required: false
+    default: '30'
+  scale_up_memory_pct:
+    description: Average memory percent at or above which scale-up is evidenced.
+    required: false
+    default: '80'
+  min_sample_count:
+    description: Minimum samples required for a strong metric signal.
+    required: false
+    default: '12'
+  spike_ratio:
+    description: max/avg ratio that marks a spike and forces review when high.
+    required: false
+    default: '2.5'
+  cloudwatch_enabled:
+    description: Query AWS CloudWatch GetMetricStatistics. Uses the standard AWS credential chain.
+    required: false
+    default: 'false'
+  cloudwatch_namespace:
+    description: CloudWatch metric namespace (example AWS/EC2).
+    required: false
+  cloudwatch_metric_name:
+    description: CloudWatch metric name (example CPUUtilization).
+    required: false
+  cloudwatch_dimensions:
+    description: CloudWatch dimensions as Name=Value pairs or JSON array.
+    required: false
+  cloudwatch_resource_id:
+    description: Stable resource id used in outputs for the CloudWatch series.
+    required: false
+  cloudwatch_service:
+    description: Service label for the CloudWatch resource.
+    required: false
+    default: aws
+  azure_enabled:
+    description: Query Azure Monitor metrics. Requires AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET.
+    required: false
+    default: 'false'
+  azure_resource_id:
+    description: Full Azure resource id path (starts with /subscriptions/...).
+    required: false
+  azure_subscription_id:
+    description: Azure subscription id. Falls back to AZURE_SUBSCRIPTION_ID.
+    required: false
+  azure_metric_names:
+    description: Comma/newline Azure metric names (default Percentage CPU).
+    required: false
+  gcp_enabled:
+    description: Query GCP Cloud Monitoring. Requires GCP_ACCESS_TOKEN.
+    required: false
+    default: 'false'
+  gcp_project_id:
+    description: GCP project id for Monitoring queries.
+    required: false
+  gcp_metric_type:
+    description: Metric type (example compute.googleapis.com/instance/cpu/utilization).
+    required: false
+  gcp_resource_id:
+    description: Instance id / resource label used in the GCP filter.
+    required: false
+  prometheus_enabled:
+    description: Query Prometheus query_range. Requires prometheus_url and queries.
+    required: false
+    default: 'false'
+  prometheus_url:
+    description: Prometheus base URL (HTTPS required except localhost).
+    required: false
+  prometheus_resource_id:
+    description: Stable resource id for Prometheus-backed evidence.
+    required: false
+  prometheus_queries_path:
+    description: Path to YAML/JSON array of {name, query, kind, unit?} queries.
+    required: false
+  min_confidence:
+    description: Minimum Jev confidence (0–1) required before scale-down or scale-up can stand.
+    required: false
+    default: '0.75'
+  low_confidence_policy:
+    description: Behavior when confidence is low or Jev is unavailable (fail, warn, request-review, no-op). Never becomes scale-down/scale-up by fiat.
+    required: false
+    default: fail
+  allow_partial:
+    description: When false, partial metrics force review instead of scale-down/scale-up.
+    required: false
+    default: 'false'
+  allow_insufficient:
+    description: When false, weak/insufficient samples force review for scale recommendations.
+    required: false
+    default: 'false'
+  fail_on_review:
+    description: Fail the workflow when the final recommendation is review.
+    required: false
+    default: 'false'
+  fail_on_scale_up:
+    description: Fail the workflow when the final recommendation is scale-up.
+    required: false
+    default: 'false'
+  fail_on_scale_down:
+    description: Fail the workflow when the final recommendation is scale-down.
+    required: false
+    default: 'false'
+  redact_resource_names:
+    description: Replace resource ids with stable hashes before calling Jev and in outputs.
+    required: false
+    default: 'true'
+  jev_provider:
+    description: How to reach Jev (vercel-ai-gateway, typesafe-native, or custom-compatible). Not a metrics connector.
+    required: false
+    default: vercel-ai-gateway
+  jev_endpoint:
+    description: HTTPS evaluate endpoint. Required for typesafe-native and custom-compatible.
+    required: false
+  jev_model:
+    description: Jev model id. Gateway default is typesafe-ai/jev. Required for typesafe-native and custom-compatible.
+    required: false
+  timeout_ms:
+    description: Jev request timeout in milliseconds.
+    required: false
+    default: '45000'
+  connector_timeout_ms:
+    description: Metrics connector timeout in milliseconds.
+    required: false
+    default: '20000'
+  comment_on_github:
+    description: Post or update a pull request comment. Requires pull-requests: write.
+    required: false
+    default: 'false'
+  apply_labels:
+    description: Apply managed jev:rightsizing:* labels on the Issue/PR. Requires pull-requests: write.
+    required: false
+    default: 'false'
+  create_check_run:
+    description: Create a completed Check Run for the rightsizing recommendation. Requires checks: write.
+    required: false
+    default: 'true'
+  dry_run:
+    description: Evaluate and emit outputs, but skip comment, labels, and check run writes.
+    required: false
+    default: 'false'
+  decision_json_path:
+    description: Workspace-relative path to write the full decision JSON.
+    required: false
+  sarif_path:
+    description: Workspace-relative path to write a SARIF 2.1 report.
+    required: false
+  github_token:
+    description: Token used for comments, labels, and check runs.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  recommendation:
+    description: Final recommendation (scale-down, keep, scale-up, or review).
+  confidence:
+    description: Confidence score between 0 and 1.
+  reason_codes:
+    description: JSON array of stable reason codes.
+  summary:
+    description: One-line summary suitable for logs.
+  explanation:
+    description: Short human-readable explanation. Never executed as a command.
+  provisional:
+    description: true when Jev did not return a usable typed decision.
+  environment:
+    description: Environment used for the decision.
+  resource_count:
+    description: Number of resources evaluated.
+  primary_resource_id:
+    description: Primary resource id (possibly redacted), or empty.
+  supporting_metrics:
+    description: JSON array of metric series that support the recommendation.
+  resources:
+    description: JSON array of every resource and its metrics. Metrics are never dropped.
+  sources:
+    description: JSON array of metric source ids.
+  partial_count:
+    description: Number of partial metric series.
+  insufficient_count:
+    description: Number of weak or insufficient metric series.
+  decision_json_path:
+    description: Path written when decision_json_path input is set, otherwise empty.
+  sarif_path:
+    description: Path written when sarif_path input is set, otherwise empty.
+
+runs:
+  using: node24
+  main: dist/index.js

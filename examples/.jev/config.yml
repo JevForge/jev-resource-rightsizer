@@ -1,0 +1,11 @@
+jev_provider: vercel-ai-gateway
+environment: production
+min_confidence: 0.75
+low_confidence_policy: request-review
+redact_resource_names: true
+thresholds:
+  scale_down_cpu_pct: 20
+  scale_up_cpu_pct: 75
+  scale_down_memory_pct: 30
+  scale_up_memory_pct: 80
+  min_sample_count: 12

@@ -1,0 +1,33 @@
+{
+  "resources": [
+    {
+      "resource_id": "api-prod-1",
+      "service": "api",
+      "resource_kind": "compute",
+      "environment": "production",
+      "current_size": "t3.large",
+      "cost_hourly": 0.0832,
+      "metrics": [
+        {
+          "kind": "cpu",
+          "avg": 11.4,
+          "p95": 18.2,
+          "max": 22.0,
+          "sample_count": 96
+        },
+        {
+          "kind": "memory",
+          "avg": 24.1,
+          "p95": 31.0,
+          "sample_count": 96
+        },
+        {
+          "kind": "requests",
+          "unit": "requests_per_sec",
+          "avg": 0.4,
+          "sample_count": 96
+        }
+      ]
+    }
+  ]
+}
