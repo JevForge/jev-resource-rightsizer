@@ -1,6 +1,6 @@
 {
   "name": "jev-resource-rightsizer",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Recommend scale-down, keep, scale-up, or review from metrics for your CI/CD workflow.",
   "private": true,
   "type": "module",
