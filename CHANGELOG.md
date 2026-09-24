@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 0.1.12 — 2026-09-24
+
+### Changed
+
+* Ignore local agent, test, security, SARIF, and review artifacts that are not shipped by the Action.
+* Pin the provider smoke workflow actions to immutable commit SHAs.
+* Update GitHub API, Vitest, and esbuild dependencies; `npm audit` is clean.
+* Keep byte-valued memory and other non-percent metrics out of percentage-based heuristics while preserving the raw evidence.
+
 ## 0.1.11 — 2026-09-24
 
 ### Added

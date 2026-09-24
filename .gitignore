@@ -9,3 +9,25 @@ coverage/
 .idea/
 .vscode/
 *.tsbuildinfo
+
+# Local-only test, security, and review output (not shipped by the Action)
+.grill/
+.start-feature/
+.test-feature/
+.nyc_output/
+.test-results/
+test-results/
+playwright-report/
+blob-report/
+reports/
+security-results/
+security-reports/
+.pre-pr/
+.security-check/
+*.sarif
+*.junit.xml
+*.trx
+*.lcov
+npm-audit.json
+gitleaks-report.json
+semgrep-results.json

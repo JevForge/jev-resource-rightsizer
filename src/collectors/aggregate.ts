@@ -1,4 +1,4 @@
-import type { EnvironmentName, MetricKind, ReasonCode, Recommendation, ThresholdProfile } from '../schemas/enums.js';
+import type { EnvironmentName, MetricKind, MetricUnit, ReasonCode, Recommendation, ThresholdProfile } from '../schemas/enums.js';
 import type { ObservationWindow, ResourceEvidence, Thresholds } from '../schemas/metrics.js';
 import { uniq } from '../utils/fs.js';
 import { actionError } from '../utils/errors.js';
@@ -29,13 +29,15 @@ export interface RightsizingReport {
   cost_impact: CostImpact | null;
 }
 
-function metricAvg(resource: ResourceEvidence, kind: MetricKind): number | null {
-  const metric = resource.metrics.find(item => item.kind === kind && item.stats.avg != null);
+function metricAvg(resource: ResourceEvidence, kind: MetricKind, unit?: MetricUnit): number | null {
+  const metric = resource.metrics.find(
+    item => item.kind === kind && (unit == null || item.unit === unit) && item.stats.avg != null,
+  );
   return metric?.stats.avg ?? null;
 }
 
-function metricMax(resource: ResourceEvidence, kind: MetricKind): number | null {
-  const metric = resource.metrics.find(item => item.kind === kind);
+function metricMax(resource: ResourceEvidence, kind: MetricKind, unit?: MetricUnit): number | null {
+  const metric = resource.metrics.find(item => item.kind === kind && (unit == null || item.unit === unit));
   return metric?.stats.max ?? metric?.stats.p99 ?? metric?.stats.p95 ?? metric?.stats.avg ?? null;
 }
 
@@ -55,12 +57,12 @@ export function factualReasonCodes(
       codes.push('RESOURCE_FILTERED');
       continue;
     }
-    const cpu = metricAvg(resource, 'cpu');
-    const memory = metricAvg(resource, 'memory');
-    const requests = metricAvg(resource, 'requests');
-    const disk = metricAvg(resource, 'disk');
-    const cost = resource.cost_hourly ?? metricAvg(resource, 'cost');
-    const cpuMax = metricMax(resource, 'cpu');
+    const cpu = metricAvg(resource, 'cpu', 'percent');
+    const memory = metricAvg(resource, 'memory', 'percent');
+    const requests = metricAvg(resource, 'requests', 'requests_per_sec');
+    const disk = metricAvg(resource, 'disk', 'percent');
+    const cost = resource.cost_hourly ?? metricAvg(resource, 'cost', 'usd_per_hour');
+    const cpuMax = metricMax(resource, 'cpu', 'percent');
 
     if (resource.metrics.some(metric => metric.partial || metric.signal === 'insufficient')) {
       codes.push('PARTIAL_METRICS');
@@ -263,10 +265,10 @@ export function aggregateReport(input: {
     heuristic_recommendation,
     per_resource_recommendations,
     primary_resource_id: primary.resource_id,
-    cpu_avg: metricAvg(primary, 'cpu'),
-    memory_avg: metricAvg(primary, 'memory'),
-    request_avg: metricAvg(primary, 'requests'),
-    cost_hourly: primary.cost_hourly ?? metricAvg(primary, 'cost'),
+    cpu_avg: metricAvg(primary, 'cpu', 'percent'),
+    memory_avg: metricAvg(primary, 'memory', 'percent'),
+    request_avg: metricAvg(primary, 'requests', 'requests_per_sec'),
+    cost_hourly: primary.cost_hourly ?? metricAvg(primary, 'cost', 'usd_per_hour'),
     cost_monthly: monthlyCost(decisionResources),
     cost_impact: estimateCostImpact(heuristic_recommendation, decisionResources),
   };

@@ -11,7 +11,7 @@ Teams often guess at instance and container sizes. Underutilized fleets waste mo
 
 ```yaml
 - id: size
-  uses: JevForge/jev-resource-rightsizer@v0.1.11
+  uses: JevForge/jev-resource-rightsizer@v0.1.12
   env:
     AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
   with:
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.11
+        uses: JevForge/jev-resource-rightsizer@v0.1.12
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -115,7 +115,7 @@ jobs:
           echo "summary=${{ steps.size.outputs.summary }}"
 ```
 
-Pin `@v0.1.11` for reproducibility, or `@v0` for the floating major line.
+Pin `@v0.1.12` for reproducibility, or `@v0` for the floating major line.
 
 ## Complete Example
 
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.11
+        uses: JevForge/jev-resource-rightsizer@v0.1.12
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -353,7 +353,7 @@ See [`SECURITY.md`](SECURITY.md).
 ## Versioning
 
 ```yaml
-uses: JevForge/jev-resource-rightsizer@v0.1.11   # recommended pin
+uses: JevForge/jev-resource-rightsizer@v0.1.12   # recommended pin
 uses: JevForge/jev-resource-rightsizer@v0       # floating major (v0.x)
 ```
 

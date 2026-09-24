@@ -42,6 +42,26 @@ describe('heuristic recommendation', () => {
     expect(r.factual_reasons).toContain('WITHIN_BAND');
   });
 
+  it('does not compare byte-valued memory with percentage thresholds', () => {
+    const collected = parseNormalizedMetrics(
+      {
+        resources: [
+          {
+            resource_id: 'cache-1',
+            metrics: [{ kind: 'memory', name: 'memory_bytes', unit: 'bytes', avg: 90_000_000, sample_count: 48 }],
+          },
+        ],
+      },
+      { environment: 'production', minSampleCount: 12 },
+    );
+    const r = report(collected.resources);
+
+    expect(r.resources[0]?.metrics[0]?.unit).toBe('bytes');
+    expect(r.memory_avg).toBeNull();
+    expect(r.heuristic_recommendation).toBe('keep');
+    expect(r.factual_reasons).not.toContain('MEMORY_PRESSURE');
+  });
+
   it('recommends review on spikes', () => {
     const r = report([resource({ cpu: 15, maxCpu: 90 })]);
     expect(r.heuristic_recommendation).toBe('review');
