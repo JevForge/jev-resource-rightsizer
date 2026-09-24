@@ -12,8 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Recommend from CloudWatch
-        uses: JevForge/jev-resource-rightsizer@v0
+
+      - id: size
+        name: Recommend from CloudWatch
+        uses: JevForge/jev-resource-rightsizer@v0.1.1
         with:
           cloudwatch_enabled: 'true'
           cloudwatch_namespace: AWS/EC2
@@ -26,3 +28,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
+
+      - name: Use recommendation
+        run: echo "${{ steps.size.outputs.recommendation }} (${{ steps.size.outputs.confidence }})"

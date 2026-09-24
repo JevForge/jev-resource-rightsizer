@@ -13,9 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Evaluate rightsizing evidence
-        id: size
-        uses: JevForge/jev-resource-rightsizer@v0
+
+      - id: size
+        name: Evaluate rightsizing evidence
+        uses: JevForge/jev-resource-rightsizer@v0.1.1
         with:
           metrics_path: ops/metrics.json
           comment_on_github: 'true'
@@ -24,8 +25,21 @@ jobs:
           decision_json_path: rightsizing-decision.json
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+
       - name: Upload decision
         uses: actions/upload-artifact@v4
         with:
           name: rightsizing-decision
           path: rightsizing-decision.json
+
+      - name: Flag scale-up pressure
+        if: steps.size.outputs.recommendation == 'scale-up'
+        run: echo "Sustained saturation — review capacity before merge"
+
+      - name: Flag waste
+        if: steps.size.outputs.recommendation == 'scale-down'
+        run: echo "Underutilized — candidate for rightsizing ticket"
+
+      - name: Needs human review
+        if: steps.size.outputs.recommendation == 'review' || steps.size.outputs.provisional == 'true'
+        run: echo "Mixed or incomplete signals — do not auto-act"

@@ -3,6 +3,19 @@ name: Bug report
 description: Report a defect in jev-resource-rightsizer
 labels: ["bug"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug.
+
+        **Do not include API keys, tokens, credentials, or other secrets.**
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What went wrong?
+    validations:
+      required: true
   - type: textarea
     id: expected
     attributes:
@@ -16,10 +29,24 @@ body:
     validations:
       required: true
   - type: textarea
-    id: repro
+    id: workflow
     attributes:
-      label: Reproduction
-      description: Workflow snippet, metrics sample (redacted), provider, and Action version/tag.
+      label: Workflow snippet
+      description: Relevant YAML only. Redact secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant Action logs with secrets removed.
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Action version / tag
+      description: For example v0.1.1 or a commit SHA
     validations:
       required: true
 ---

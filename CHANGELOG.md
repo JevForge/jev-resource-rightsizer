@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+* Professional public README (Quick Start, complete example, full input/output tables, Why JEV, authentication, versioning).
+* Stronger CONTRIBUTING, SECURITY, issue, and PR templates (explicit no-secrets guidance).
+* Example workflows pin `@v0.1.1` and demonstrate output branching.
+
 ## 0.1.1 — 2026-09-24
 
 - Shorten `action.yml` description to ≤125 characters for GitHub Marketplace.

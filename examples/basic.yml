@@ -14,8 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Recommend rightsizing
-        uses: JevForge/jev-resource-rightsizer@v0
+
+      - id: size
+        name: Recommend rightsizing
+        uses: JevForge/jev-resource-rightsizer@v0.1.1
         with:
           metrics_path: examples/metrics.json
           environment: production
@@ -23,3 +25,9 @@ jobs:
           create_check_run: 'false'
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+
+      - name: Use recommendation
+        run: |
+          echo "recommendation=${{ steps.size.outputs.recommendation }}"
+          echo "confidence=${{ steps.size.outputs.confidence }}"
+          echo "summary=${{ steps.size.outputs.summary }}"

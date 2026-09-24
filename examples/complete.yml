@@ -1,0 +1,42 @@
+name: Resource RightSizer — complete example
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rightsizing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: size
+        name: Recommend rightsizing
+        uses: JevForge/jev-resource-rightsizer@v0.1.1
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        with:
+          metrics_path: examples/metrics.json
+          environment: production
+          create_check_run: 'false'
+          dry_run: 'true'
+
+      - name: Print outputs
+        run: |
+          echo "recommendation=${{ steps.size.outputs.recommendation }}"
+          echo "confidence=${{ steps.size.outputs.confidence }}"
+          echo "provisional=${{ steps.size.outputs.provisional }}"
+          echo "reason_codes=${{ steps.size.outputs.reason_codes }}"
+          echo "summary=${{ steps.size.outputs.summary }}"
+
+      - name: Branch on recommendation
+        run: |
+          case "${{ steps.size.outputs.recommendation }}" in
+            scale-down) echo "Candidate for scale-down review" ;;
+            scale-up)   echo "Candidate for capacity increase" ;;
+            keep)       echo "No size change indicated" ;;
+            review)     echo "Human review required" ;;
+            *)          echo "Unexpected recommendation"; exit 1 ;;
+          esac
