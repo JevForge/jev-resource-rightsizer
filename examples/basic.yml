@@ -17,7 +17,7 @@ jobs:
 
       - id: size
         name: Recommend rightsizing
-        uses: JevForge/jev-resource-rightsizer@v0.1.10
+        uses: JevForge/jev-resource-rightsizer@v0.1.11
         with:
           metrics_path: examples/metrics.json
           environment: production

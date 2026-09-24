@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## 0.1.11 — 2026-09-24
+
+### Added
+
+* Add a manual provider-mock smoke workflow that runs the bundled Action against a golden fixture.
+* Permit HTTP only for loopback custom-provider endpoints used by local smoke tests; external endpoints remain HTTPS-only.
+
 ## 0.1.10 — 2026-09-24
 
 ### Added

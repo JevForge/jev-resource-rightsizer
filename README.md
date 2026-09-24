@@ -11,7 +11,7 @@ Teams often guess at instance and container sizes. Underutilized fleets waste mo
 
 ```yaml
 - id: size
-  uses: JevForge/jev-resource-rightsizer@v0.1.10
+  uses: JevForge/jev-resource-rightsizer@v0.1.11
   env:
     AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
   with:
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.10
+        uses: JevForge/jev-resource-rightsizer@v0.1.11
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -115,7 +115,7 @@ jobs:
           echo "summary=${{ steps.size.outputs.summary }}"
 ```
 
-Pin `@v0.1.10` for reproducibility, or `@v0` for the floating major line.
+Pin `@v0.1.11` for reproducibility, or `@v0` for the floating major line.
 
 ## Complete Example
 
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.10
+        uses: JevForge/jev-resource-rightsizer@v0.1.11
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -353,7 +353,7 @@ See [`SECURITY.md`](SECURITY.md).
 ## Versioning
 
 ```yaml
-uses: JevForge/jev-resource-rightsizer@v0.1.10   # recommended pin
+uses: JevForge/jev-resource-rightsizer@v0.1.11   # recommended pin
 uses: JevForge/jev-resource-rightsizer@v0       # floating major (v0.x)
 ```
 
@@ -377,6 +377,10 @@ npm run all   # typecheck + coverage + build
 ```
 
 Consumers run bundled `dist/index.js` (`runs.using: node24`) and do not need to install dependencies.
+
+The provider mock smoke check can be run locally with `npm run build` followed by
+`node scripts/smoke-e2e.mjs`; CI exposes the same check as a `workflow_dispatch`
+workflow.
 
 ## Contributing
 

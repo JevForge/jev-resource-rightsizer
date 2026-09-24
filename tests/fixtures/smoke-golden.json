@@ -1,0 +1,20 @@
+{
+  "provider_response": {
+    "answers": {
+      "decision": {
+        "type": "choice",
+        "choice": "scale-down",
+        "confidence": 0.91
+      },
+      "estimates_incomplete": {
+        "type": "boolean",
+        "probability": 0.02
+      }
+    }
+  },
+  "expected": {
+    "recommendation": "scale-down",
+    "heuristic_recommendation": "scale-down",
+    "resource_count": "1"
+  }
+}

@@ -82796,7 +82796,19 @@ function createCustomCompatibleProvider(options) {
           unavailableMessage: "jev_endpoint is required for custom-compatible"
         };
       }
-      if (!options.endpoint.startsWith("https://")) {
+      let endpointUrl;
+      try {
+        endpointUrl = new URL(options.endpoint);
+      } catch {
+        return {
+          decision: null,
+          confidence: 0,
+          provisional: true,
+          unavailableMessage: "jev_endpoint must be a valid HTTPS URL"
+        };
+      }
+      const loopbackHttp = endpointUrl.protocol === "http:" && (endpointUrl.hostname === "localhost" || endpointUrl.hostname === "127.0.0.1" || endpointUrl.hostname === "::1");
+      if (endpointUrl.protocol !== "https:" && !loopbackHttp) {
         return {
           decision: null,
           confidence: 0,

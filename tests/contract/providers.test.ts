@@ -51,4 +51,20 @@ describe('providers', () => {
     expect(answer.confidence).toBeCloseTo(0.88);
     expect(answer.provisional).toBe(false);
   });
+
+  it('allows loopback HTTP only for the local provider smoke test', async () => {
+    const provider = createJevProvider({
+      provider: 'custom-compatible',
+      apiKey: 'key',
+      endpoint: 'http://127.0.0.1:12345/evaluate',
+      model: 'typesafe-ai/jev',
+      timeoutMs: 1000,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ answers: { decision: { type: 'choice', choice: 'keep', confidence: 0.9 } } }), {
+          status: 200,
+        }),
+    });
+    const answer = await provider.evaluateRightsizing(buildEvaluationState(report([resource({ cpu: 40 })])));
+    expect(answer.decision).toBe('keep');
+  });
 });
