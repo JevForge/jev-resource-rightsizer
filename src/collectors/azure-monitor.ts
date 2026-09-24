@@ -3,6 +3,7 @@ import { makeResource } from './resource.js';
 import type { CollectResult, ConnectorFetch } from './types.js';
 import type { EnvironmentName } from '../schemas/enums.js';
 import { withRetry } from '../utils/retry.js';
+import { actionError } from '../utils/errors.js';
 
 export interface AzureMonitorCollectOptions {
   environment: EnvironmentName;
@@ -56,7 +57,11 @@ export async function collectAzureMonitor(options: AzureMonitorCollectOptions): 
         signal: AbortSignal.timeout(options.timeoutMs),
       });
       if (!response.ok) {
-        throw new Error(`Azure Monitor HTTP ${response.status}`);
+        throw new Error(
+          actionError(
+            `Azure Monitor HTTP ${response.status}. Verify the resource id and that the identity has Monitoring Reader.`,
+          ),
+        );
       }
       return (await response.json()) as AzureMetricsResponse;
     },
@@ -131,9 +136,13 @@ export async function acquireAzureToken(credentials: {
     },
   );
   if (!response.ok) {
-    throw new Error(`Azure token HTTP ${response.status}`);
+    throw new Error(
+      actionError(`Azure token HTTP ${response.status}. Verify AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET.`),
+    );
   }
   const json = (await response.json()) as { access_token?: string };
-  if (!json.access_token) throw new Error('Azure token response missing access_token');
+  if (!json.access_token) {
+    throw new Error(actionError('Azure token response missing access_token.'));
+  }
   return json.access_token;
 }

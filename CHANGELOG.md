@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## 0.1.3 — 2026-09-24
+
+### Changed
+
+* Standardize connector and validation errors with `[JEV Resource RightSizer]` and actionable causes (no secret leakage).
+
+## 0.1.2 — 2026-09-24
+
 ### Changed
 
 * Professional public README (Quick Start, complete example, full input/output tables, Why JEV, authentication, versioning).

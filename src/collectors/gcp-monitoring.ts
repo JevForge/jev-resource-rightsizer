@@ -3,6 +3,7 @@ import { makeResource } from './resource.js';
 import type { CollectResult, ConnectorFetch } from './types.js';
 import type { EnvironmentName } from '../schemas/enums.js';
 import { withRetry } from '../utils/retry.js';
+import { actionError } from '../utils/errors.js';
 
 export interface GcpMonitoringCollectOptions {
   environment: EnvironmentName;
@@ -65,7 +66,11 @@ export async function collectGcpMonitoring(options: GcpMonitoringCollectOptions)
         signal: AbortSignal.timeout(options.timeoutMs),
       });
       if (!response.ok) {
-        throw new Error(`GCP Monitoring HTTP ${response.status}`);
+        throw new Error(
+          actionError(
+            `GCP Monitoring HTTP ${response.status}. Verify GCP_ACCESS_TOKEN scopes and project/metric/resource ids.`,
+          ),
+        );
       }
       return (await response.json()) as GcpTimeSeriesResponse;
     },

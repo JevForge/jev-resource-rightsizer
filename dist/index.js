@@ -66174,6 +66174,13 @@ function parseCloudWatchDimensions(raw) {
 // src/collectors/load.ts
 var import_node_fs5 = require("node:fs");
 
+// src/utils/errors.ts
+var ACTION_LOG_PREFIX = "[JEV Resource RightSizer]";
+function actionError(cause) {
+  const cleaned = cause.replace(/^\s*\[JEV Resource RightSizer\]\s*/i, "").trim();
+  return `${ACTION_LOG_PREFIX} ${cleaned}`;
+}
+
 // src/collectors/aggregate.ts
 function metricAvg(resource, kind) {
   const metric = resource.metrics.find((item) => item.kind === kind && item.stats.avg != null);
@@ -66271,7 +66278,9 @@ function heuristicRecommendation(reasons, thresholds, resources) {
 function aggregateReport(input) {
   const resources = input.collected.flatMap((item) => item.resources);
   if (!resources.length) {
-    throw new Error("No resource metrics were collected. Provide metrics_json, metrics_path, or enable a connector.");
+    throw new Error(
+      actionError("No resource metrics were collected. Provide metrics_json, metrics_path, or enable a connector.")
+    );
   }
   const sources = uniq(input.collected.flatMap((item) => item.sources));
   const warnings = input.collected.flatMap((item) => item.warnings);
@@ -66688,7 +66697,11 @@ async function collectAzureMonitor(options) {
         signal: AbortSignal.timeout(options.timeoutMs)
       });
       if (!response.ok) {
-        throw new Error(`Azure Monitor HTTP ${response.status}`);
+        throw new Error(
+          actionError(
+            `Azure Monitor HTTP ${response.status}. Verify the resource id and that the identity has Monitoring Reader.`
+          )
+        );
       }
       return await response.json();
     },
@@ -66749,10 +66762,14 @@ async function acquireAzureToken(credentials) {
     }
   );
   if (!response.ok) {
-    throw new Error(`Azure token HTTP ${response.status}`);
+    throw new Error(
+      actionError(`Azure token HTTP ${response.status}. Verify AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET.`)
+    );
   }
   const json2 = await response.json();
-  if (!json2.access_token) throw new Error("Azure token response missing access_token");
+  if (!json2.access_token) {
+    throw new Error(actionError("Azure token response missing access_token."));
+  }
   return json2.access_token;
 }
 
@@ -66787,7 +66804,11 @@ async function collectGcpMonitoring(options) {
         signal: AbortSignal.timeout(options.timeoutMs)
       });
       if (!response.ok) {
-        throw new Error(`GCP Monitoring HTTP ${response.status}`);
+        throw new Error(
+          actionError(
+            `GCP Monitoring HTTP ${response.status}. Verify GCP_ACCESS_TOKEN scopes and project/metric/resource ids.`
+          )
+        );
       }
       return await response.json();
     },
@@ -66837,7 +66858,9 @@ async function collectPrometheus(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const base = options.baseUrl.replace(/\/$/, "");
   if (!base.startsWith("https://") && !base.startsWith("http://localhost") && !base.startsWith("http://127.0.0.1")) {
-    throw new Error("prometheus_url must be HTTPS (or localhost for local development)");
+    throw new Error(
+      actionError("prometheus_url must be HTTPS (or localhost / 127.0.0.1 for local development)")
+    );
   }
   const metrics = [];
   const warnings = [];
@@ -66855,7 +66878,11 @@ async function collectPrometheus(options) {
           headers,
           signal: AbortSignal.timeout(options.timeoutMs)
         });
-        if (!response.ok) throw new Error(`Prometheus HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(
+            actionError(`Prometheus HTTP ${response.status}. Verify prometheus_url, query, and bearer token.`)
+          );
+        }
         return await response.json();
       },
       { label: `Prometheus ${query.name}`, attempts: 2 }
@@ -66919,7 +66946,7 @@ async function loadMetricsReport(input) {
     );
   } else if (input.metricsPath) {
     const full = resolveInside(input.workspace, input.metricsPath);
-    if (!(0, import_node_fs5.existsSync)(full)) throw new Error(`metrics_path not found: ${input.metricsPath}`);
+    if (!(0, import_node_fs5.existsSync)(full)) throw new Error(actionError(`metrics_path not found: ${input.metricsPath}`));
     collected.push(
       parseNormalizedMetrics(parseYamlOrJson(readBounded(full), input.metricsPath), {
         environment: input.environment,
@@ -66929,7 +66956,11 @@ async function loadMetricsReport(input) {
   }
   if (input.cloudwatch?.enabled) {
     if (!input.cloudwatch.namespace || !input.cloudwatch.metricName || !input.cloudwatch.resourceId) {
-      throw new Error("cloudwatch_enabled requires cloudwatch_namespace, cloudwatch_metric_name, and cloudwatch_resource_id");
+      throw new Error(
+        actionError(
+          "cloudwatch_enabled requires cloudwatch_namespace, cloudwatch_metric_name, and cloudwatch_resource_id"
+        )
+      );
     }
     const client = input.cloudwatch.client ?? await createDefaultCloudWatchClient();
     collected.push(
@@ -66947,13 +66978,17 @@ async function loadMetricsReport(input) {
     );
   }
   if (input.azure?.enabled) {
-    if (!input.azure.resourceId) throw new Error("azure_enabled requires azure_resource_id");
+    if (!input.azure.resourceId) throw new Error(actionError("azure_enabled requires azure_resource_id"));
     const token = input.azure.accessToken ?? (input.azure.credentials ? await acquireAzureToken({
       ...input.azure.credentials,
       timeoutMs: input.azure.timeoutMs,
       fetchImpl: input.azure.fetchImpl
     }) : void 0);
-    if (!token) throw new Error("Azure Monitor requires access token or AZURE_* credentials");
+    if (!token) {
+      throw new Error(
+        actionError("Azure Monitor authentication failed. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET.")
+      );
+    }
     collected.push(
       await collectAzureMonitor({
         environment: input.environment,
@@ -66971,9 +67006,13 @@ async function loadMetricsReport(input) {
   }
   if (input.gcp?.enabled) {
     if (!input.gcp.projectId || !input.gcp.metricType || !input.gcp.resourceId) {
-      throw new Error("gcp_enabled requires gcp_project_id, gcp_metric_type, and gcp_resource_id");
+      throw new Error(
+        actionError("gcp_enabled requires gcp_project_id, gcp_metric_type, and gcp_resource_id")
+      );
     }
-    if (!input.gcp.accessToken) throw new Error("GCP Monitoring requires GCP_ACCESS_TOKEN");
+    if (!input.gcp.accessToken) {
+      throw new Error(actionError("GCP Monitoring authentication failed. Set GCP_ACCESS_TOKEN."));
+    }
     collected.push(
       await collectGcpMonitoring({
         environment: input.environment,
@@ -66991,7 +67030,9 @@ async function loadMetricsReport(input) {
   }
   if (input.prometheus?.enabled) {
     if (!input.prometheus.baseUrl || !input.prometheus.resourceId) {
-      throw new Error("prometheus_enabled requires prometheus_url and prometheus_resource_id");
+      throw new Error(
+        actionError("prometheus_enabled requires prometheus_url and prometheus_resource_id")
+      );
     }
     let queries = input.prometheus.queries ?? [];
     if (!queries.length && input.prometheus.queriesPath) {
@@ -66999,7 +67040,9 @@ async function loadMetricsReport(input) {
       queries = PrometheusQueriesSchema.parse(parseYamlOrJson(readBounded(full), input.prometheus.queriesPath));
     }
     if (!queries.length) {
-      throw new Error("prometheus_enabled requires prometheus_queries_path or inline queries");
+      throw new Error(
+        actionError("prometheus_enabled requires prometheus_queries_path or inline queries")
+      );
     }
     collected.push(
       await collectPrometheus({
@@ -82467,7 +82510,7 @@ async function runResourceRightsizer(params) {
 }
 
 // src/index.ts
-var LOG = "[JEV Resource RightSizer]";
+var LOG = ACTION_LOG_PREFIX;
 function env2(name25) {
   const value = process.env[name25];
   return value?.trim() ? value : void 0;
@@ -82514,7 +82557,7 @@ async function main() {
   const metricsJson = core.getInput("metrics_json").trim();
   const metricsPath = pickString(core.getInput("metrics_path"), config2.metrics_path);
   if (metricsJson && metricsPath) {
-    throw new Error(`${LOG} Pass metrics_json or metrics_path, not both`);
+    throw new Error(actionError("Pass metrics_json or metrics_path, not both"));
   }
   const cloudwatchEnabled = pickBoolean(core.getInput("cloudwatch_enabled"), void 0, false);
   const azureEnabled = pickBoolean(core.getInput("azure_enabled"), void 0, false);

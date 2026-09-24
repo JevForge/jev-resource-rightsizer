@@ -17,10 +17,11 @@ import { writeDecisionJson, writeDecisionSarif } from './github/artifacts.js';
 import { runResourceRightsizer } from './run.js';
 import { defaultWindow } from './utils/stats.js';
 import { safeError } from './utils/sanitize.js';
+import { ACTION_LOG_PREFIX, actionError } from './utils/errors.js';
 import type { CommentClient } from './executors/effects.js';
 import type { CheckRunClient, LabelClient } from './executors/github-status.js';
 
-const LOG = '[JEV Resource RightSizer]';
+const LOG = ACTION_LOG_PREFIX;
 
 function env(name: string): string | undefined {
   const value = process.env[name];
@@ -71,7 +72,7 @@ async function main(): Promise<void> {
   const metricsJson = core.getInput('metrics_json').trim();
   const metricsPath = pickString(core.getInput('metrics_path'), config.metrics_path);
   if (metricsJson && metricsPath) {
-    throw new Error(`${LOG} Pass metrics_json or metrics_path, not both`);
+    throw new Error(actionError('Pass metrics_json or metrics_path, not both'));
   }
 
   const cloudwatchEnabled = pickBoolean(core.getInput('cloudwatch_enabled'), undefined, false);
