@@ -3,6 +3,7 @@ import type { ObservationWindow, ResourceEvidence, Thresholds } from '../schemas
 import { uniq } from '../utils/fs.js';
 import { actionError } from '../utils/errors.js';
 import type { CollectResult } from './types.js';
+import { activeResources, applyResourceFilters, type ResourceFilter } from './filters.js';
 
 export interface RightsizingReport {
   environment: EnvironmentName;
@@ -44,6 +45,10 @@ export function factualReasonCodes(
   let mixed = false;
 
   for (const resource of resources) {
+    if (resource.excluded) {
+      codes.push('RESOURCE_FILTERED');
+      continue;
+    }
     const cpu = metricAvg(resource, 'cpu');
     const memory = metricAvg(resource, 'memory');
     const requests = metricAvg(resource, 'requests');
@@ -159,32 +164,49 @@ export function aggregateReport(input: {
   window: ObservationWindow;
   thresholds: Thresholds;
   collected: CollectResult[];
+  filters?: ResourceFilter;
 }): RightsizingReport {
-  const resources = input.collected.flatMap(item => item.resources);
-  if (!resources.length) {
+  const filtered = applyResourceFilters(
+    input.collected.flatMap(item => item.resources),
+    input.filters ?? {},
+  );
+  const decisionResources = activeResources(filtered);
+  if (!filtered.length) {
     throw new Error(
       actionError('No resource metrics were collected. Provide metrics_json, metrics_path, or enable a connector.'),
     );
   }
+  if (!decisionResources.length) {
+    throw new Error(
+      actionError('All collected resources were excluded by include_resources / exclude_resources filters.'),
+    );
+  }
   const sources = uniq(input.collected.flatMap(item => item.sources));
   const warnings = input.collected.flatMap(item => item.warnings);
-  const partial_count = resources.reduce(
+  if (filtered.some(resource => resource.excluded)) {
+    warnings.push('One or more resources were excluded from the rightsizing decision by filters.');
+  }
+  const partial_count = decisionResources.reduce(
     (sum, resource) => sum + resource.metrics.filter(metric => metric.partial).length,
     0,
   );
-  const insufficient_count = resources.reduce(
+  const insufficient_count = decisionResources.reduce(
     (sum, resource) =>
       sum + resource.metrics.filter(metric => metric.signal === 'insufficient' || metric.signal === 'weak').length,
     0,
   );
-  const factual_reasons = factualReasonCodes(resources, input.thresholds, input.environment, sources);
-  const heuristic_recommendation = heuristicRecommendation(factual_reasons, input.thresholds, resources);
-  const primary = resources[0]!;
+  const factual_reasons = factualReasonCodes(filtered, input.thresholds, input.environment, sources);
+  const heuristic_recommendation = heuristicRecommendation(
+    factual_reasons,
+    input.thresholds,
+    decisionResources,
+  );
+  const primary = decisionResources[0]!;
   return {
     environment: input.environment,
     window: input.window,
     thresholds: input.thresholds,
-    resources,
+    resources: filtered,
     sources,
     warnings,
     partial_count,

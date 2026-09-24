@@ -60,6 +60,7 @@ export const ResourceEvidenceSchema = z
     metrics: z.array(MetricSeriesSchema).min(1).max(64),
     cost_hourly: z.number().finite().nullable().optional(),
     cost_monthly: z.number().finite().nullable().optional(),
+    excluded: z.boolean().optional(),
   })
   .strict();
 

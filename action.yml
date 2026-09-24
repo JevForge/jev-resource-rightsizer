@@ -105,6 +105,12 @@ inputs:
   prometheus_queries_path:
     description: Path to YAML/JSON array of {name, query, kind, unit?} queries.
     required: false
+  include_resources:
+    description: Optional comma/newline globs matched against resource id, service, or resource kind.
+    required: false
+  exclude_resources:
+    description: Optional comma/newline globs excluded from the decision while remaining visible in outputs.
+    required: false
   min_confidence:
     description: Minimum Jev confidence (0–1) required before scale-down or scale-up can stand.
     required: false

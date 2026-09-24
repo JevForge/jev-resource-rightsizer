@@ -97,5 +97,6 @@ export const REASON_CODES = [
   'TREND_RISING',
   'TREND_FALLING',
   'RIGHTSIZING_VISIBILITY_ENFORCED',
+  'RESOURCE_FILTERED',
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];

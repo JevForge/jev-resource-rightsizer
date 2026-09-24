@@ -7,6 +7,7 @@ import {
   loadRightsizerConfig,
   parseCloudWatchDimensions,
   pickBoolean,
+  pickList,
   pickNumber,
   pickProvider,
   splitList,
@@ -25,6 +26,8 @@ describe('config helpers', () => {
     expect(splitList('a,b\nc')).toEqual(['a', 'b', 'c']);
     expect(pickBoolean('true', undefined, false)).toBe(true);
     expect(pickNumber('3', undefined, 1)).toBe(3);
+    expect(pickList('', ['api-*'])).toEqual(['api-*']);
+    expect(pickList('worker-*', ['api-*'])).toEqual(['worker-*']);
     expect(pickProvider('', { jev_provider: 'typesafe-native' })).toBe('typesafe-native');
   });
 

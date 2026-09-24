@@ -4,6 +4,7 @@ import {
   loadRightsizerConfig,
   pickBoolean,
   pickEnvironment,
+  pickList,
   pickNumber,
   pickPolicy,
   pickProvider,
@@ -134,6 +135,8 @@ async function main(): Promise<void> {
       bearerToken: env('PROMETHEUS_BEARER_TOKEN'),
       timeoutMs: pickNumber(core.getInput('connector_timeout_ms'), undefined, 20_000),
     },
+    includeResources: pickList(core.getInput('include_resources'), config.include_resources),
+    excludeResources: pickList(core.getInput('exclude_resources'), config.exclude_resources),
   });
 
   const commentOnGithub = pickBoolean(core.getInput('comment_on_github'), config.comment_on_github, false);

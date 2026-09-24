@@ -11,7 +11,7 @@ Teams often guess at instance and container sizes. Underutilized fleets waste mo
 
 ```yaml
 - id: size
-  uses: JevForge/jev-resource-rightsizer@v0.1.1
+  uses: JevForge/jev-resource-rightsizer@v0.1.6
   env:
     AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
   with:
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.1
+        uses: JevForge/jev-resource-rightsizer@v0.1.6
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -115,7 +115,7 @@ jobs:
           echo "summary=${{ steps.size.outputs.summary }}"
 ```
 
-Pin `@v0.1.1` for reproducibility, or `@v0` for the floating major line.
+Pin `@v0.1.6` for reproducibility, or `@v0` for the floating major line.
 
 ## Complete Example
 
@@ -205,6 +205,8 @@ More workflows: [`examples/basic.yml`](examples/basic.yml), [`examples/pr-gate.y
 | `prometheus_url` | no | — | HTTPS base URL (localhost allowed) |
 | `prometheus_resource_id` | no | — | Stable id for outputs |
 | `prometheus_queries_path` | no | — | YAML/JSON query list |
+| `include_resources` | no | — | Comma/newline globs for resource id, service, or resource kind to include |
+| `exclude_resources` | no | — | Comma/newline globs for resource id, service, or resource kind to exclude |
 | `min_confidence` | no | `0.75` | Minimum confidence for scale-down/up |
 | `low_confidence_policy` | no | `fail` | `fail` \| `warn` \| `request-review` \| `no-op` |
 | `allow_partial` | no | `false` | Allow scale decisions with partial metrics |
@@ -340,14 +342,14 @@ See [`SECURITY.md`](SECURITY.md).
 ## Versioning
 
 ```yaml
-uses: JevForge/jev-resource-rightsizer@v0.1.1   # recommended pin
+uses: JevForge/jev-resource-rightsizer@v0.1.6   # recommended pin
 uses: JevForge/jev-resource-rightsizer@v0       # floating major (v0.x)
 ```
 
 ### Cutting a release (CI)
 
 1. Merge to `main` with `dist/` up to date (`npm run build`).
-2. Either **Actions → Release → Run workflow** on `main` (enter `0.1.2`), or push tag `v0.1.2`.
+2. Either **Actions → Release → Run workflow** on `main` (enter the next version), or push its `vX.Y.Z` tag.
 3. [`jev-release-forge`](https://github.com/JevForge/jev-release-forge) verifies the build, publishes the GitHub Release, and moves floating major `v0`.
 
 Marketplace listing updates still need one browser step (GitHub 2FA): edit the release and keep **Publish this Action to the GitHub Marketplace** checked.

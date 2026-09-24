@@ -2,6 +2,10 @@
 
 All connectors normalize into the same `ResourceEvidence` model. Enable only what you need; combine with `metrics_path` / `metrics_json` when useful.
 
+The Action keeps every collected resource visible. Use `include_resources` and
+`exclude_resources` with comma/newline-separated globs to limit the resources
+used by the decision without deleting their evidence from outputs.
+
 ## Normalized JSON / YAML
 
 Supports:

@@ -45,6 +45,8 @@ export const RightsizerConfigSchema = z
     prometheus_url: z.string().optional(),
     prometheus_queries_path: z.string().optional(),
     prometheus_resource_id: z.string().optional(),
+    include_resources: z.array(z.string()).optional(),
+    exclude_resources: z.array(z.string()).optional(),
   })
   .strict();
 
@@ -98,6 +100,11 @@ export function splitList(value: string | undefined): string[] {
     .split(/[\n,]/)
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+export function pickList(input: string | undefined, config: string[] | undefined): string[] {
+  const fromInput = splitList(input);
+  return fromInput.length ? fromInput : config ?? [];
 }
 
 export function parseCloudWatchDimensions(raw: string | undefined): Array<{ Name: string; Value: string }> {

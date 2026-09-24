@@ -65944,7 +65944,8 @@ var REASON_CODES = [
   "SPIKE_DETECTED",
   "TREND_RISING",
   "TREND_FALLING",
-  "RIGHTSIZING_VISIBILITY_ENFORCED"
+  "RIGHTSIZING_VISIBILITY_ENFORCED",
+  "RESOURCE_FILTERED"
 ];
 
 // src/schemas/metrics.ts
@@ -65982,7 +65983,8 @@ var ResourceEvidenceSchema = external_exports.object({
   target_hint: external_exports.string().min(1).max(128).nullable().optional(),
   metrics: external_exports.array(MetricSeriesSchema).min(1).max(64),
   cost_hourly: external_exports.number().finite().nullable().optional(),
-  cost_monthly: external_exports.number().finite().nullable().optional()
+  cost_monthly: external_exports.number().finite().nullable().optional(),
+  excluded: external_exports.boolean().optional()
 }).strict();
 var ThresholdsSchema = external_exports.object({
   scale_down_cpu_pct: external_exports.number().min(0).max(100).default(20),
@@ -66114,7 +66116,9 @@ var RightsizerConfigSchema = external_exports.object({
   gcp_resource_id: external_exports.string().optional(),
   prometheus_url: external_exports.string().optional(),
   prometheus_queries_path: external_exports.string().optional(),
-  prometheus_resource_id: external_exports.string().optional()
+  prometheus_resource_id: external_exports.string().optional(),
+  include_resources: external_exports.array(external_exports.string()).optional(),
+  exclude_resources: external_exports.array(external_exports.string()).optional()
 }).strict();
 function loadRightsizerConfig(workspace, relativePath = ".jev/config.yml") {
   const full = resolveInside(workspace, relativePath);
@@ -66155,6 +66159,10 @@ function splitList(value) {
   if (!value?.trim()) return [];
   return value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
 }
+function pickList(input, config2) {
+  const fromInput = splitList(input);
+  return fromInput.length ? fromInput : config2 ?? [];
+}
 function parseCloudWatchDimensions(raw) {
   if (!raw?.trim()) return [];
   const trimmed = raw.trim();
@@ -66181,6 +66189,36 @@ function actionError(cause) {
   return `${ACTION_LOG_PREFIX} ${cleaned}`;
 }
 
+// src/collectors/filters.ts
+function globToRegExp(pattern) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`, "i");
+}
+function matchesAny(resource, patterns) {
+  return patterns.some((pattern) => {
+    const re = globToRegExp(pattern);
+    return re.test(resource.resource_id) || re.test(resource.service) || re.test(resource.resource_kind);
+  });
+}
+function applyResourceFilters(resources, filter2) {
+  const include = (filter2.include ?? []).map((item) => item.trim()).filter(Boolean);
+  const exclude = (filter2.exclude ?? []).map((item) => item.trim()).filter(Boolean);
+  if (!include.length && !exclude.length) {
+    return resources.map((resource) => ({ ...resource, excluded: false }));
+  }
+  return resources.map((resource) => {
+    const denied = exclude.length > 0 && matchesAny(resource, exclude);
+    const allowed = include.length === 0 || matchesAny(resource, include);
+    return {
+      ...resource,
+      excluded: Boolean(denied || !allowed)
+    };
+  });
+}
+function activeResources(resources) {
+  return resources.filter((resource) => !resource.excluded);
+}
+
 // src/collectors/aggregate.ts
 function metricAvg(resource, kind) {
   const metric = resource.metrics.find((item) => item.kind === kind && item.stats.avg != null);
@@ -66196,6 +66234,10 @@ function factualReasonCodes(resources, thresholds, environment, sources) {
   let scaleUpVotes = 0;
   let mixed = false;
   for (const resource of resources) {
+    if (resource.excluded) {
+      codes.push("RESOURCE_FILTERED");
+      continue;
+    }
     const cpu = metricAvg(resource, "cpu");
     const memory = metricAvg(resource, "memory");
     const requests = metricAvg(resource, "requests");
@@ -66276,30 +66318,46 @@ function heuristicRecommendation(reasons, thresholds, resources) {
   return "keep";
 }
 function aggregateReport(input) {
-  const resources = input.collected.flatMap((item) => item.resources);
-  if (!resources.length) {
+  const filtered = applyResourceFilters(
+    input.collected.flatMap((item) => item.resources),
+    input.filters ?? {}
+  );
+  const decisionResources = activeResources(filtered);
+  if (!filtered.length) {
     throw new Error(
       actionError("No resource metrics were collected. Provide metrics_json, metrics_path, or enable a connector.")
     );
   }
+  if (!decisionResources.length) {
+    throw new Error(
+      actionError("All collected resources were excluded by include_resources / exclude_resources filters.")
+    );
+  }
   const sources = uniq(input.collected.flatMap((item) => item.sources));
   const warnings = input.collected.flatMap((item) => item.warnings);
-  const partial_count = resources.reduce(
+  if (filtered.some((resource) => resource.excluded)) {
+    warnings.push("One or more resources were excluded from the rightsizing decision by filters.");
+  }
+  const partial_count = decisionResources.reduce(
     (sum, resource) => sum + resource.metrics.filter((metric) => metric.partial).length,
     0
   );
-  const insufficient_count = resources.reduce(
+  const insufficient_count = decisionResources.reduce(
     (sum, resource) => sum + resource.metrics.filter((metric) => metric.signal === "insufficient" || metric.signal === "weak").length,
     0
   );
-  const factual_reasons = factualReasonCodes(resources, input.thresholds, input.environment, sources);
-  const heuristic_recommendation = heuristicRecommendation(factual_reasons, input.thresholds, resources);
-  const primary = resources[0];
+  const factual_reasons = factualReasonCodes(filtered, input.thresholds, input.environment, sources);
+  const heuristic_recommendation = heuristicRecommendation(
+    factual_reasons,
+    input.thresholds,
+    decisionResources
+  );
+  const primary = decisionResources[0];
   return {
     environment: input.environment,
     window: input.window,
     thresholds: input.thresholds,
-    resources,
+    resources: filtered,
     sources,
     warnings,
     partial_count,
@@ -67063,7 +67121,11 @@ async function loadMetricsReport(input) {
     environment: input.environment,
     window: input.window,
     thresholds: ThresholdsSchema.parse(input.thresholds),
-    collected
+    collected,
+    filters: {
+      include: input.includeResources,
+      exclude: input.excludeResources
+    }
   });
 }
 
@@ -82617,7 +82679,9 @@ async function main() {
       queriesPath: pickString(core.getInput("prometheus_queries_path"), config2.prometheus_queries_path),
       bearerToken: env2("PROMETHEUS_BEARER_TOKEN"),
       timeoutMs: pickNumber(core.getInput("connector_timeout_ms"), void 0, 2e4)
-    }
+    },
+    includeResources: pickList(core.getInput("include_resources"), config2.include_resources),
+    excludeResources: pickList(core.getInput("exclude_resources"), config2.exclude_resources)
   });
   const commentOnGithub = pickBoolean(core.getInput("comment_on_github"), config2.comment_on_github, false);
   const applyLabels = pickBoolean(core.getInput("apply_labels"), config2.apply_labels, false);

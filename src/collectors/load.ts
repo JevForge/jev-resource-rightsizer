@@ -89,6 +89,8 @@ export interface LoadMetricsInput {
     timeoutMs: number;
     fetchImpl?: ConnectorFetch;
   };
+  includeResources?: string[];
+  excludeResources?: string[];
 }
 
 export async function loadMetricsReport(input: LoadMetricsInput): Promise<RightsizingReport> {
@@ -230,5 +232,9 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
     window: input.window,
     thresholds: ThresholdsSchema.parse(input.thresholds),
     collected,
+    filters: {
+      include: input.includeResources,
+      exclude: input.excludeResources,
+    },
   });
 }

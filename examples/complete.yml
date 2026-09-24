@@ -14,7 +14,7 @@ jobs:
 
       - id: size
         name: Recommend rightsizing
-        uses: JevForge/jev-resource-rightsizer@v0.1.1
+        uses: JevForge/jev-resource-rightsizer@v0.1.6
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
