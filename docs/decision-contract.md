@@ -8,6 +8,11 @@
 
 Jev receives a typed evaluation state and answers a `choice` question (`decision`) plus an `estimates_incomplete` boolean. The Action uses AI SDK `experimental_evaluate` for `vercel-ai-gateway` (model `typesafe-ai/jev`) and an HTTPS evaluate POST for native/custom providers. All providers normalize to the same `JevRawAnswer`.
 
+The final decision also includes `per_resource_recommendations`. These are
+deterministic heuristic baselines for each resource, including reason codes and
+whether a resource was filtered; they are informational only and never mutate
+infrastructure.
+
 ## Deterministic executor limits
 
 After schema validation, only allowlisted effects run:

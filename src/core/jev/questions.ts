@@ -38,6 +38,7 @@ export function buildEvaluationState(report: RightsizingReport): RightsizingEval
     insufficient_count: report.insufficient_count,
     sources: report.sources,
     warnings: report.warnings,
+    per_resource_recommendations: report.per_resource_recommendations,
     resources: report.resources.map(resource => ({
       resource_id: resource.resource_id,
       service: resource.service,

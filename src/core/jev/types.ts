@@ -1,5 +1,6 @@
 import type { JevProviderId } from '../../schemas/enums.js';
 import type { RightsizingDecision } from '../../schemas/decision.js';
+import type { PerResourceRecommendation } from '../../schemas/decision.js';
 import type { RightsizingReport } from '../../collectors/aggregate.js';
 
 export interface RightsizingEvaluationState {
@@ -24,6 +25,7 @@ export interface RightsizingEvaluationState {
   insufficient_count: number;
   sources: string[];
   warnings: string[];
+  per_resource_recommendations: PerResourceRecommendation[];
   resources: Array<{
     resource_id: string;
     service: string;

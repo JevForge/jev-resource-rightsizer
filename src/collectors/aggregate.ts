@@ -4,6 +4,7 @@ import { uniq } from '../utils/fs.js';
 import { actionError } from '../utils/errors.js';
 import type { CollectResult } from './types.js';
 import { activeResources, applyResourceFilters, type ResourceFilter } from './filters.js';
+import type { PerResourceRecommendation } from '../schemas/decision.js';
 
 export interface RightsizingReport {
   environment: EnvironmentName;
@@ -16,6 +17,7 @@ export interface RightsizingReport {
   insufficient_count: number;
   factual_reasons: ReasonCode[];
   heuristic_recommendation: Recommendation;
+  per_resource_recommendations: PerResourceRecommendation[];
   primary_resource_id: string | null;
   cpu_avg: number | null;
   memory_avg: number | null;
@@ -159,6 +161,34 @@ export function heuristicRecommendation(
   return 'keep';
 }
 
+export function perResourceRecommendations(
+  resources: ResourceEvidence[],
+  thresholds: Thresholds,
+  environment: EnvironmentName,
+  sources: string[],
+): PerResourceRecommendation[] {
+  return resources.map(resource => {
+    if (resource.excluded) {
+      return {
+        resource_id: resource.resource_id,
+        recommendation: 'review',
+        heuristic_recommendation: 'review',
+        reason_codes: ['RESOURCE_FILTERED'],
+        excluded: true,
+      };
+    }
+    const reason_codes = factualReasonCodes([resource], thresholds, environment, sources);
+    const recommendation = heuristicRecommendation(reason_codes, thresholds, [resource]);
+    return {
+      resource_id: resource.resource_id,
+      recommendation,
+      heuristic_recommendation: recommendation,
+      reason_codes,
+      excluded: false,
+    };
+  });
+}
+
 export function aggregateReport(input: {
   environment: EnvironmentName;
   window: ObservationWindow;
@@ -201,6 +231,12 @@ export function aggregateReport(input: {
     input.thresholds,
     decisionResources,
   );
+  const per_resource_recommendations = perResourceRecommendations(
+    filtered,
+    input.thresholds,
+    input.environment,
+    sources,
+  );
   const primary = decisionResources[0]!;
   return {
     environment: input.environment,
@@ -213,6 +249,7 @@ export function aggregateReport(input: {
     insufficient_count,
     factual_reasons,
     heuristic_recommendation,
+    per_resource_recommendations,
     primary_resource_id: primary.resource_id,
     cpu_avg: metricAvg(primary, 'cpu'),
     memory_avg: metricAvg(primary, 'memory'),

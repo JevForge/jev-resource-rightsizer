@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## 0.1.8 — 2026-09-24
+
+### Added
+
+* Add `per_resource_recommendations` while retaining one global Jev decision.
+* Preserve filtered resources as `review`/`RESOURCE_FILTERED` in the per-resource evidence.
+
 ## 0.1.7 — 2026-09-24
 
 ### Added

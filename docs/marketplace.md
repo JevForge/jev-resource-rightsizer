@@ -6,7 +6,7 @@ Prepared for GitHub Marketplace. Listing publication requires the browser checkb
 
 - Repository: https://github.com/JevForge/jev-resource-rightsizer
 - Latest release: https://github.com/JevForge/jev-resource-rightsizer/releases/latest
-- Release edit (publish checkbox): https://github.com/JevForge/jev-resource-rightsizer/releases/edit/v0.1.7
+- Release edit (publish checkbox): https://github.com/JevForge/jev-resource-rightsizer/releases/edit/v0.1.8
 - Expected Marketplace URL: https://github.com/marketplace/actions/jev-resource-rightsizer
 
 ## Listing copy

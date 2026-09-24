@@ -2,6 +2,18 @@ import { z } from 'zod';
 import { REASON_CODES, RECOMMENDATIONS } from './enums.js';
 import { MetricSeriesSchema, ObservationWindowSchema, ResourceEvidenceSchema, ThresholdsSchema } from './metrics.js';
 
+export const PerResourceRecommendationSchema = z
+  .object({
+    resource_id: z.string().min(1).max(256),
+    recommendation: z.enum(RECOMMENDATIONS),
+    heuristic_recommendation: z.enum(RECOMMENDATIONS),
+    reason_codes: z.array(z.enum(REASON_CODES)).min(1).max(24),
+    excluded: z.boolean(),
+  })
+  .strict();
+
+export type PerResourceRecommendation = z.infer<typeof PerResourceRecommendationSchema>;
+
 export const RightsizingDecisionSchema = z
   .object({
     recommendation: z.enum(RECOMMENDATIONS),
@@ -21,6 +33,7 @@ export const RightsizingDecisionSchema = z
     partial_count: z.number().int().nonnegative(),
     insufficient_count: z.number().int().nonnegative(),
     heuristic_recommendation: z.enum(RECOMMENDATIONS),
+    per_resource_recommendations: z.array(PerResourceRecommendationSchema).max(500).default([]),
   })
   .strict();
 

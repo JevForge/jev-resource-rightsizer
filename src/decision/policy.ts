@@ -48,11 +48,20 @@ export function applyRightsizingPolicy(
     ...parsed,
     resources: report.resources,
     supporting_metrics: report.resources.flatMap(resource => resource.metrics),
+    per_resource_recommendations: report.per_resource_recommendations,
   };
 
   if (
     parsed.resources.length !== report.resources.length ||
     parsed.resources.some((resource, index) => resource.id !== report.resources[index]?.id)
+  ) {
+    reasons.add('RIGHTSIZING_VISIBILITY_ENFORCED');
+  }
+  if (
+    parsed.per_resource_recommendations.length !== report.per_resource_recommendations.length ||
+    parsed.per_resource_recommendations.some(
+      (item, index) => item.resource_id !== report.per_resource_recommendations[index]?.resource_id,
+    )
   ) {
     reasons.add('RIGHTSIZING_VISIBILITY_ENFORCED');
   }
@@ -94,6 +103,7 @@ export function applyRightsizingPolicy(
     ...current,
     resources: report.resources,
     supporting_metrics: report.resources.flatMap(resource => resource.metrics),
+    per_resource_recommendations: report.per_resource_recommendations,
     reason_codes: [...reasons].slice(0, 24),
   });
 

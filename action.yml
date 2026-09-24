@@ -237,6 +237,8 @@ outputs:
     description: Number of weak or insufficient metric series.
   heuristic_recommendation:
     description: Deterministic baseline recommendation before Jev (scale-down, keep, scale-up, or review).
+  per_resource_recommendations:
+    description: JSON array of deterministic recommendations for each resource; no infrastructure mutation is performed.
   decision_json_path:
     description: Path written when decision_json_path input is set, otherwise empty.
   sarif_path:

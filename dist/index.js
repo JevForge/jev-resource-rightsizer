@@ -66083,6 +66083,12 @@ function redactResource(resource) {
     }))
   };
 }
+function redactResourceRecommendation(recommendation) {
+  return {
+    ...recommendation,
+    resource_id: `redacted:${shortHash(recommendation.resource_id)}`
+  };
+}
 function escapeCell(value) {
   return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
@@ -66326,6 +66332,28 @@ function heuristicRecommendation(reasons, thresholds, resources) {
   void thresholds;
   return "keep";
 }
+function perResourceRecommendations(resources, thresholds, environment, sources) {
+  return resources.map((resource) => {
+    if (resource.excluded) {
+      return {
+        resource_id: resource.resource_id,
+        recommendation: "review",
+        heuristic_recommendation: "review",
+        reason_codes: ["RESOURCE_FILTERED"],
+        excluded: true
+      };
+    }
+    const reason_codes = factualReasonCodes([resource], thresholds, environment, sources);
+    const recommendation = heuristicRecommendation(reason_codes, thresholds, [resource]);
+    return {
+      resource_id: resource.resource_id,
+      recommendation,
+      heuristic_recommendation: recommendation,
+      reason_codes,
+      excluded: false
+    };
+  });
+}
 function aggregateReport(input) {
   const filtered = applyResourceFilters(
     input.collected.flatMap((item) => item.resources),
@@ -66361,6 +66389,12 @@ function aggregateReport(input) {
     input.thresholds,
     decisionResources
   );
+  const per_resource_recommendations = perResourceRecommendations(
+    filtered,
+    input.thresholds,
+    input.environment,
+    sources
+  );
   const primary = decisionResources[0];
   return {
     environment: input.environment,
@@ -66373,6 +66407,7 @@ function aggregateReport(input) {
     insufficient_count,
     factual_reasons,
     heuristic_recommendation,
+    per_resource_recommendations,
     primary_resource_id: primary.resource_id,
     cpu_avg: metricAvg(primary, "cpu"),
     memory_avg: metricAvg(primary, "memory"),
@@ -67273,6 +67308,7 @@ function writeDecisionOutputs(writer, decision) {
   writer.setOutput("partial_count", String(decision.partial_count));
   writer.setOutput("insufficient_count", String(decision.insufficient_count));
   writer.setOutput("heuristic_recommendation", decision.heuristic_recommendation);
+  writer.setOutput("per_resource_recommendations", JSON.stringify(decision.per_resource_recommendations));
 }
 async function applyOutcome(writer, outcome, markdown) {
   writeDecisionOutputs(writer, outcome.decision);
@@ -67340,6 +67376,13 @@ function writeDecisionSarif(workspace, relativePath, decision) {
 }
 
 // src/schemas/decision.ts
+var PerResourceRecommendationSchema = external_exports.object({
+  resource_id: external_exports.string().min(1).max(256),
+  recommendation: external_exports.enum(RECOMMENDATIONS),
+  heuristic_recommendation: external_exports.enum(RECOMMENDATIONS),
+  reason_codes: external_exports.array(external_exports.enum(REASON_CODES)).min(1).max(24),
+  excluded: external_exports.boolean()
+}).strict();
 var RightsizingDecisionSchema = external_exports.object({
   recommendation: external_exports.enum(RECOMMENDATIONS),
   confidence: external_exports.number().min(0).max(1),
@@ -67357,7 +67400,8 @@ var RightsizingDecisionSchema = external_exports.object({
   sources: external_exports.array(external_exports.string().min(1).max(64)).max(16),
   partial_count: external_exports.number().int().nonnegative(),
   insufficient_count: external_exports.number().int().nonnegative(),
-  heuristic_recommendation: external_exports.enum(RECOMMENDATIONS)
+  heuristic_recommendation: external_exports.enum(RECOMMENDATIONS),
+  per_resource_recommendations: external_exports.array(PerResourceRecommendationSchema).max(500).default([])
 }).strict();
 
 // src/core/jev/normalize.ts
@@ -67410,7 +67454,8 @@ function normalizeAnswer(answer, report) {
       sources: report.sources,
       partial_count: report.partial_count,
       insufficient_count: report.insufficient_count,
-      heuristic_recommendation: report.heuristic_recommendation
+      heuristic_recommendation: report.heuristic_recommendation,
+      per_resource_recommendations: report.per_resource_recommendations
     });
   }
   if (!Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1) {
@@ -67441,7 +67486,8 @@ function normalizeAnswer(answer, report) {
     sources: report.sources,
     partial_count: report.partial_count,
     insufficient_count: report.insufficient_count,
-    heuristic_recommendation: report.heuristic_recommendation
+    heuristic_recommendation: report.heuristic_recommendation,
+    per_resource_recommendations: report.per_resource_recommendations
   });
 }
 
@@ -67462,9 +67508,15 @@ function applyRightsizingPolicy(decision, report, options) {
   let current = {
     ...parsed,
     resources: report.resources,
-    supporting_metrics: report.resources.flatMap((resource) => resource.metrics)
+    supporting_metrics: report.resources.flatMap((resource) => resource.metrics),
+    per_resource_recommendations: report.per_resource_recommendations
   };
   if (parsed.resources.length !== report.resources.length || parsed.resources.some((resource, index) => resource.id !== report.resources[index]?.id)) {
+    reasons.add("RIGHTSIZING_VISIBILITY_ENFORCED");
+  }
+  if (parsed.per_resource_recommendations.length !== report.per_resource_recommendations.length || parsed.per_resource_recommendations.some(
+    (item, index) => item.resource_id !== report.per_resource_recommendations[index]?.resource_id
+  )) {
     reasons.add("RIGHTSIZING_VISIBILITY_ENFORCED");
   }
   const unavailable = current.provisional || reasons.has("JEV_UNAVAILABLE");
@@ -67496,6 +67548,7 @@ function applyRightsizingPolicy(decision, report, options) {
     ...current,
     resources: report.resources,
     supporting_metrics: report.resources.flatMap((resource) => resource.metrics),
+    per_resource_recommendations: report.per_resource_recommendations,
     reason_codes: [...reasons].slice(0, 24)
   });
   const lowConfidence = current.confidence < options.minConfidence || current.provisional;
@@ -82456,6 +82509,7 @@ function buildEvaluationState(report) {
     insufficient_count: report.insufficient_count,
     sources: report.sources,
     warnings: report.warnings,
+    per_resource_recommendations: report.per_resource_recommendations,
     resources: report.resources.map((resource) => ({
       resource_id: resource.resource_id,
       service: resource.service,
@@ -82652,7 +82706,11 @@ function createJevProvider(input) {
 
 // src/run.ts
 async function runResourceRightsizer(params) {
-  const report = params.redactResourceNames ? { ...params.report, resources: params.report.resources.map(redactResource) } : params.report;
+  const report = params.redactResourceNames ? {
+    ...params.report,
+    resources: params.report.resources.map(redactResource),
+    per_resource_recommendations: params.report.per_resource_recommendations.map(redactResourceRecommendation)
+  } : params.report;
   const state2 = buildEvaluationState(report);
   assertStateFits(state2);
   const provider = params.provider ?? createJevProvider({

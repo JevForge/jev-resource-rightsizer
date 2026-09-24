@@ -33,6 +33,7 @@ describe('runResourceRightsizer', () => {
     expect(result.outcome.status).toBe('ok');
     expect(result.effects).toContain('set-outputs');
     expect(result.markdown).toContain('JEV Resource RightSizer');
+    expect(result.outcome.decision.per_resource_recommendations[0]?.resource_id).toMatch(/^redacted:/);
   });
 
   it('never lists infrastructure-mutation effects', async () => {
