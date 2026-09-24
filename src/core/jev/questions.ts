@@ -27,6 +27,7 @@ export function buildEvaluationState(report: RightsizingReport): RightsizingEval
     environment: report.environment,
     window: report.window,
     thresholds: report.thresholds,
+    threshold_profile: report.threshold_profile,
     heuristic_recommendation: report.heuristic_recommendation,
     factual_reasons: report.factual_reasons,
     primary_resource_id: report.primary_resource_id,

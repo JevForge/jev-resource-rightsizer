@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## 0.1.9 — 2026-09-24
+
+### Added
+
+* Add `conservative`, `balanced`, and `aggressive` threshold profiles with environment-aware defaults.
+* Expose the selected `threshold_profile` in the decision contract and Action outputs.
+
 ## 0.1.8 — 2026-09-24
 
 ### Added

@@ -12,6 +12,8 @@ import {
   splitList,
 } from './collectors/config.js';
 import { loadMetricsReport } from './collectors/load.js';
+import { defaultThresholdProfile, thresholdsForProfile, THRESHOLD_PROFILES } from './collectors/profiles.js';
+import type { ThresholdProfile } from './schemas/enums.js';
 import { ThresholdsSchema } from './schemas/metrics.js';
 import { applyOutcome } from './github/outputs.js';
 import { writeDecisionJson, writeDecisionSarif } from './github/artifacts.js';
@@ -45,29 +47,39 @@ async function main(): Promise<void> {
     start: pickString(core.getInput('window_start'), config.window_start, fallbackWindow.start) ?? fallbackWindow.start,
     end: pickString(core.getInput('window_end'), config.window_end, fallbackWindow.end) ?? fallbackWindow.end,
   };
+  const thresholdProfileValue = pickString(
+    core.getInput('threshold_profile'),
+    config.threshold_profile,
+    defaultThresholdProfile(environment),
+  );
+  if (!thresholdProfileValue || !THRESHOLD_PROFILES.includes(thresholdProfileValue as ThresholdProfile)) {
+    throw new Error(actionError(`Unsupported threshold_profile: ${thresholdProfileValue}`));
+  }
+  const thresholdProfile = thresholdProfileValue as ThresholdProfile;
+  const profileDefaults = thresholdsForProfile(thresholdProfile);
   const thresholds = ThresholdsSchema.parse({
     scale_down_cpu_pct: pickNumber(
       core.getInput('scale_down_cpu_pct'),
       config.thresholds?.scale_down_cpu_pct,
-      20,
+      profileDefaults.scale_down_cpu_pct,
     ),
-    scale_up_cpu_pct: pickNumber(core.getInput('scale_up_cpu_pct'), config.thresholds?.scale_up_cpu_pct, 75),
+    scale_up_cpu_pct: pickNumber(core.getInput('scale_up_cpu_pct'), config.thresholds?.scale_up_cpu_pct, profileDefaults.scale_up_cpu_pct),
     scale_down_memory_pct: pickNumber(
       core.getInput('scale_down_memory_pct'),
       config.thresholds?.scale_down_memory_pct,
-      30,
+      profileDefaults.scale_down_memory_pct,
     ),
     scale_up_memory_pct: pickNumber(
       core.getInput('scale_up_memory_pct'),
       config.thresholds?.scale_up_memory_pct,
-      80,
+      profileDefaults.scale_up_memory_pct,
     ),
     min_sample_count: pickNumber(
       core.getInput('min_sample_count'),
       config.thresholds?.min_sample_count,
-      12,
+      profileDefaults.min_sample_count,
     ),
-    spike_ratio: pickNumber(core.getInput('spike_ratio'), config.thresholds?.spike_ratio, 2.5),
+    spike_ratio: pickNumber(core.getInput('spike_ratio'), config.thresholds?.spike_ratio, profileDefaults.spike_ratio),
   });
 
   const metricsJson = core.getInput('metrics_json').trim();
@@ -91,6 +103,7 @@ async function main(): Promise<void> {
     environment,
     window,
     thresholds,
+    thresholdProfile,
     metricsPath,
     metricsDocument: metricsJson ? (JSON.parse(metricsJson) as unknown) : undefined,
     cloudwatch: {

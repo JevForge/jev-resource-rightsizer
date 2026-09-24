@@ -14,6 +14,7 @@ export interface RightsizingEvaluationState {
     min_sample_count: number;
     spike_ratio: number;
   };
+  threshold_profile: string;
   heuristic_recommendation: string;
   factual_reasons: string[];
   primary_resource_id: string | null;

@@ -46,6 +46,9 @@ inputs:
     description: max/avg ratio that marks a spike and forces review when high.
     required: false
     default: '2.5'
+  threshold_profile:
+    description: Threshold preset: conservative, balanced, or aggressive. Production defaults to conservative.
+    required: false
   cloudwatch_enabled:
     description: Query AWS CloudWatch GetMetricStatistics. Uses the standard AWS credential chain.
     required: false

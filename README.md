@@ -11,7 +11,7 @@ Teams often guess at instance and container sizes. Underutilized fleets waste mo
 
 ```yaml
 - id: size
-  uses: JevForge/jev-resource-rightsizer@v0.1.8
+  uses: JevForge/jev-resource-rightsizer@v0.1.9
   env:
     AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
   with:
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.8
+        uses: JevForge/jev-resource-rightsizer@v0.1.9
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -115,7 +115,7 @@ jobs:
           echo "summary=${{ steps.size.outputs.summary }}"
 ```
 
-Pin `@v0.1.8` for reproducibility, or `@v0` for the floating major line.
+Pin `@v0.1.9` for reproducibility, or `@v0` for the floating major line.
 
 ## Complete Example
 
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.8
+        uses: JevForge/jev-resource-rightsizer@v0.1.9
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -191,6 +191,7 @@ More workflows: [`examples/basic.yml`](examples/basic.yml), [`examples/pr-gate.y
 | `scale_up_memory_pct` | no | `80` | Memory % scale-up threshold |
 | `min_sample_count` | no | `12` | Samples required for a strong signal |
 | `spike_ratio` | no | `2.5` | `max/avg` spike ratio that forces review |
+| `threshold_profile` | no | environment-aware | `conservative` \| `balanced` \| `aggressive` preset; explicit thresholds override the preset |
 | `cloudwatch_enabled` | no | `false` | Query AWS CloudWatch |
 | `cloudwatch_namespace` | no | — | e.g. `AWS/EC2` |
 | `cloudwatch_metric_name` | no | — | e.g. `CPUUtilization` |
@@ -256,6 +257,7 @@ Full metadata: [`action.yml`](action.yml). Connectors: [`docs/connectors.md`](do
 | `insufficient_count` | Count of weak/insufficient series |
 | `heuristic_recommendation` | Deterministic baseline before Jev |
 | `per_resource_recommendations` | JSON array with a deterministic recommendation, reasons, and exclusion flag per resource |
+| `threshold_profile` | Selected threshold preset used to resolve defaults |
 | `decision_json_path` | Path written when requested, else empty |
 | `sarif_path` | Path written when requested, else empty |
 
@@ -348,7 +350,7 @@ See [`SECURITY.md`](SECURITY.md).
 ## Versioning
 
 ```yaml
-uses: JevForge/jev-resource-rightsizer@v0.1.8   # recommended pin
+uses: JevForge/jev-resource-rightsizer@v0.1.9   # recommended pin
 uses: JevForge/jev-resource-rightsizer@v0       # floating major (v0.x)
 ```
 

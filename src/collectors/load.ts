@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { z } from 'zod';
 import { ThresholdsSchema, type ObservationWindow, type Thresholds } from '../schemas/metrics.js';
-import type { EnvironmentName } from '../schemas/enums.js';
+import type { EnvironmentName, ThresholdProfile } from '../schemas/enums.js';
 import { parseYamlOrJson, readBounded } from '../utils/fs.js';
 import { resolveInside } from '../utils/sanitize.js';
 import { aggregateReport, type RightsizingReport } from './aggregate.js';
@@ -43,6 +43,7 @@ export interface LoadMetricsInput {
   environment: EnvironmentName;
   window: ObservationWindow;
   thresholds: Thresholds;
+  thresholdProfile?: ThresholdProfile;
   metricsPath?: string;
   metricsDocument?: unknown;
   cloudwatch?: {
@@ -274,6 +275,7 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
     environment: input.environment,
     window: input.window,
     thresholds: ThresholdsSchema.parse(input.thresholds),
+    thresholdProfile: input.thresholdProfile,
     collected,
     filters: {
       include: input.includeResources,

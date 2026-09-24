@@ -20,6 +20,7 @@ export const RightsizerConfigSchema = z
     min_confidence: z.number().min(0).max(1).optional(),
     low_confidence_policy: z.enum(LOW_CONFIDENCE_POLICIES).optional(),
     environment: z.enum(ENVIRONMENTS).optional(),
+    threshold_profile: z.enum(['conservative', 'balanced', 'aggressive']).optional(),
     window_start: z.string().optional(),
     window_end: z.string().optional(),
     thresholds: ThresholdsSchema.partial().optional(),

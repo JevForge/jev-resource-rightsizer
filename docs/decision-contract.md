@@ -37,6 +37,7 @@ No resize, restart, terraform apply, kubectl scale, or cloud write APIs are invo
   "primary_resource_id": "api-prod-1",
   "supporting_metrics": [],
   "resources": [],
+  "threshold_profile": "balanced",
   "thresholds": {
     "scale_down_cpu_pct": 20,
     "scale_up_cpu_pct": 75,

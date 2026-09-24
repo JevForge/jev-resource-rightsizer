@@ -15,7 +15,7 @@ jobs:
 
       - id: size
         name: Recommend from CloudWatch
-        uses: JevForge/jev-resource-rightsizer@v0.1.8
+        uses: JevForge/jev-resource-rightsizer@v0.1.9
         with:
           cloudwatch_enabled: 'true'
           cloudwatch_namespace: AWS/EC2

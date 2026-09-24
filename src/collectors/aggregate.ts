@@ -1,4 +1,4 @@
-import type { EnvironmentName, MetricKind, ReasonCode, Recommendation } from '../schemas/enums.js';
+import type { EnvironmentName, MetricKind, ReasonCode, Recommendation, ThresholdProfile } from '../schemas/enums.js';
 import type { ObservationWindow, ResourceEvidence, Thresholds } from '../schemas/metrics.js';
 import { uniq } from '../utils/fs.js';
 import { actionError } from '../utils/errors.js';
@@ -10,6 +10,7 @@ export interface RightsizingReport {
   environment: EnvironmentName;
   window: ObservationWindow;
   thresholds: Thresholds;
+  threshold_profile: ThresholdProfile;
   resources: ResourceEvidence[];
   sources: string[];
   warnings: string[];
@@ -193,6 +194,7 @@ export function aggregateReport(input: {
   environment: EnvironmentName;
   window: ObservationWindow;
   thresholds: Thresholds;
+  thresholdProfile?: ThresholdProfile;
   collected: CollectResult[];
   filters?: ResourceFilter;
 }): RightsizingReport {
@@ -242,6 +244,7 @@ export function aggregateReport(input: {
     environment: input.environment,
     window: input.window,
     thresholds: input.thresholds,
+    threshold_profile: input.thresholdProfile ?? 'balanced',
     resources: filtered,
     sources,
     warnings,

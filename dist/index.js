@@ -65878,6 +65878,7 @@ var ENVIRONMENTS = [
   "sandbox",
   "other"
 ];
+var THRESHOLD_PROFILES = ["conservative", "balanced", "aggressive"];
 var METRIC_KINDS = [
   "cpu",
   "memory",
@@ -66101,6 +66102,7 @@ var RightsizerConfigSchema = external_exports.object({
   min_confidence: external_exports.number().min(0).max(1).optional(),
   low_confidence_policy: external_exports.enum(LOW_CONFIDENCE_POLICIES).optional(),
   environment: external_exports.enum(ENVIRONMENTS).optional(),
+  threshold_profile: external_exports.enum(["conservative", "balanced", "aggressive"]).optional(),
   window_start: external_exports.string().optional(),
   window_end: external_exports.string().optional(),
   thresholds: ThresholdsSchema.partial().optional(),
@@ -66400,6 +66402,7 @@ function aggregateReport(input) {
     environment: input.environment,
     window: input.window,
     thresholds: input.thresholds,
+    threshold_profile: input.thresholdProfile ?? "balanced",
     resources: filtered,
     sources,
     warnings,
@@ -67283,12 +67286,47 @@ async function loadMetricsReport(input) {
     environment: input.environment,
     window: input.window,
     thresholds: ThresholdsSchema.parse(input.thresholds),
+    thresholdProfile: input.thresholdProfile,
     collected,
     filters: {
       include: input.includeResources,
       exclude: input.excludeResources
     }
   });
+}
+
+// src/collectors/profiles.ts
+var PROFILE_THRESHOLDS = {
+  conservative: {
+    scale_down_cpu_pct: 15,
+    scale_up_cpu_pct: 70,
+    scale_down_memory_pct: 25,
+    scale_up_memory_pct: 75,
+    min_sample_count: 24,
+    spike_ratio: 2
+  },
+  balanced: {
+    scale_down_cpu_pct: 20,
+    scale_up_cpu_pct: 75,
+    scale_down_memory_pct: 30,
+    scale_up_memory_pct: 80,
+    min_sample_count: 12,
+    spike_ratio: 2.5
+  },
+  aggressive: {
+    scale_down_cpu_pct: 30,
+    scale_up_cpu_pct: 85,
+    scale_down_memory_pct: 40,
+    scale_up_memory_pct: 90,
+    min_sample_count: 8,
+    spike_ratio: 3
+  }
+};
+function thresholdsForProfile(profile) {
+  return { ...PROFILE_THRESHOLDS[profile] };
+}
+function defaultThresholdProfile(environment) {
+  return environment === "production" ? "conservative" : "balanced";
 }
 
 // src/github/outputs.ts
@@ -67308,6 +67346,7 @@ function writeDecisionOutputs(writer, decision) {
   writer.setOutput("partial_count", String(decision.partial_count));
   writer.setOutput("insufficient_count", String(decision.insufficient_count));
   writer.setOutput("heuristic_recommendation", decision.heuristic_recommendation);
+  writer.setOutput("threshold_profile", decision.threshold_profile);
   writer.setOutput("per_resource_recommendations", JSON.stringify(decision.per_resource_recommendations));
 }
 async function applyOutcome(writer, outcome, markdown) {
@@ -67394,6 +67433,7 @@ var RightsizingDecisionSchema = external_exports.object({
   supporting_metrics: external_exports.array(MetricSeriesSchema).max(128),
   resources: external_exports.array(ResourceEvidenceSchema).max(500),
   thresholds: ThresholdsSchema,
+  threshold_profile: external_exports.enum(THRESHOLD_PROFILES).default("balanced"),
   summary: external_exports.string().min(1).max(500),
   explanation: external_exports.string().max(2e3),
   provisional: external_exports.boolean(),
@@ -67448,6 +67488,7 @@ function normalizeAnswer(answer, report) {
       supporting_metrics: report.resources.flatMap((resource) => resource.metrics),
       resources: report.resources,
       thresholds: report.thresholds,
+      threshold_profile: report.threshold_profile,
       summary: buildSummary("review", report, 0),
       explanation: `${buildExplanation("review", report, true)} ${answer.unavailableMessage}`.slice(0, 2e3),
       provisional: true,
@@ -67480,6 +67521,7 @@ function normalizeAnswer(answer, report) {
     supporting_metrics: report.resources.flatMap((resource) => resource.metrics),
     resources: report.resources,
     thresholds: report.thresholds,
+    threshold_profile: report.threshold_profile,
     summary: buildSummary(recommendation, report, answer.confidence),
     explanation: buildExplanation(recommendation, report, false),
     provisional: answer.provisional,
@@ -82498,6 +82540,7 @@ function buildEvaluationState(report) {
     environment: report.environment,
     window: report.window,
     thresholds: report.thresholds,
+    threshold_profile: report.threshold_profile,
     heuristic_recommendation: report.heuristic_recommendation,
     factual_reasons: report.factual_reasons,
     primary_resource_id: report.primary_resource_id,
@@ -82781,29 +82824,39 @@ async function main() {
     start: pickString(core.getInput("window_start"), config2.window_start, fallbackWindow.start) ?? fallbackWindow.start,
     end: pickString(core.getInput("window_end"), config2.window_end, fallbackWindow.end) ?? fallbackWindow.end
   };
+  const thresholdProfileValue = pickString(
+    core.getInput("threshold_profile"),
+    config2.threshold_profile,
+    defaultThresholdProfile(environment)
+  );
+  if (!thresholdProfileValue || !THRESHOLD_PROFILES.includes(thresholdProfileValue)) {
+    throw new Error(actionError(`Unsupported threshold_profile: ${thresholdProfileValue}`));
+  }
+  const thresholdProfile = thresholdProfileValue;
+  const profileDefaults = thresholdsForProfile(thresholdProfile);
   const thresholds = ThresholdsSchema.parse({
     scale_down_cpu_pct: pickNumber(
       core.getInput("scale_down_cpu_pct"),
       config2.thresholds?.scale_down_cpu_pct,
-      20
+      profileDefaults.scale_down_cpu_pct
     ),
-    scale_up_cpu_pct: pickNumber(core.getInput("scale_up_cpu_pct"), config2.thresholds?.scale_up_cpu_pct, 75),
+    scale_up_cpu_pct: pickNumber(core.getInput("scale_up_cpu_pct"), config2.thresholds?.scale_up_cpu_pct, profileDefaults.scale_up_cpu_pct),
     scale_down_memory_pct: pickNumber(
       core.getInput("scale_down_memory_pct"),
       config2.thresholds?.scale_down_memory_pct,
-      30
+      profileDefaults.scale_down_memory_pct
     ),
     scale_up_memory_pct: pickNumber(
       core.getInput("scale_up_memory_pct"),
       config2.thresholds?.scale_up_memory_pct,
-      80
+      profileDefaults.scale_up_memory_pct
     ),
     min_sample_count: pickNumber(
       core.getInput("min_sample_count"),
       config2.thresholds?.min_sample_count,
-      12
+      profileDefaults.min_sample_count
     ),
-    spike_ratio: pickNumber(core.getInput("spike_ratio"), config2.thresholds?.spike_ratio, 2.5)
+    spike_ratio: pickNumber(core.getInput("spike_ratio"), config2.thresholds?.spike_ratio, profileDefaults.spike_ratio)
   });
   const metricsJson = core.getInput("metrics_json").trim();
   const metricsPath = pickString(core.getInput("metrics_path"), config2.metrics_path);
@@ -82823,6 +82876,7 @@ async function main() {
     environment,
     window: window2,
     thresholds,
+    thresholdProfile,
     metricsPath,
     metricsDocument: metricsJson ? JSON.parse(metricsJson) : void 0,
     cloudwatch: {

@@ -20,6 +20,9 @@ export const ENVIRONMENTS = [
 ] as const;
 export type EnvironmentName = (typeof ENVIRONMENTS)[number];
 
+export const THRESHOLD_PROFILES = ['conservative', 'balanced', 'aggressive'] as const;
+export type ThresholdProfile = (typeof THRESHOLD_PROFILES)[number];
+
 export const METRIC_KINDS = [
   'cpu',
   'memory',

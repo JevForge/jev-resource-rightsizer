@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { REASON_CODES, RECOMMENDATIONS } from './enums.js';
+import { REASON_CODES, RECOMMENDATIONS, THRESHOLD_PROFILES } from './enums.js';
 import { MetricSeriesSchema, ObservationWindowSchema, ResourceEvidenceSchema, ThresholdsSchema } from './metrics.js';
 
 export const PerResourceRecommendationSchema = z
@@ -26,6 +26,7 @@ export const RightsizingDecisionSchema = z
     supporting_metrics: z.array(MetricSeriesSchema).max(128),
     resources: z.array(ResourceEvidenceSchema).max(500),
     thresholds: ThresholdsSchema,
+    threshold_profile: z.enum(THRESHOLD_PROFILES).default('balanced'),
     summary: z.string().min(1).max(500),
     explanation: z.string().max(2_000),
     provisional: z.boolean(),
