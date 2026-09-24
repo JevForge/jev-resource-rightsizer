@@ -1,8 +1,22 @@
-# Marketplace listing (draft — not published)
+# Marketplace listing
 
-**Name:** JEV Resource RightSizer  
-**Categories:** Continuous integration, Deployment, Monitoring  
-**Short description:** Recommend scale-down, keep, scale-up, or review from metrics with typed Jev decisions — without changing infrastructure.  
-**Icon:** activity / blue  
+## Status
 
-Publish only after an explicit maintainer approval and a tagged release with verified `dist/`.
+Prepared for GitHub Marketplace. Listing publication requires the browser checkbox + 2FA on a release (no GitHub API).
+
+- Repository: https://github.com/JevForge/jev-resource-rightsizer
+- Release edit (publish checkbox): https://github.com/JevForge/jev-resource-rightsizer/releases/edit/v0.1.1
+- Expected Marketplace URL: https://github.com/marketplace/actions/jev-resource-rightsizer
+
+## Listing copy
+
+- **Name:** JEV Resource RightSizer
+- **Short description (≤125 chars):** Recommend scale-down, keep, scale-up, or review from metrics with typed Jev decisions.
+- **Primary category:** Continuous integration
+- **Additional category:** Monitoring
+- **Icon / color:** activity / blue
+- **Must state:** Sends metric aggregates to the configured Jev provider; never changes infrastructure.
+
+## Updating the listing
+
+Edit a release and keep **Publish this Action to the GitHub Marketplace** checked. GitHub requires browser 2FA (not available via API/`gh`/CI).

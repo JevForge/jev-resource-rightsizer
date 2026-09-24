@@ -1,5 +1,10 @@
 # JEV Resource RightSizer
 
+[![GitHub Release](https://img.shields.io/github/v/release/JevForge/jev-resource-rightsizer)](https://github.com/JevForge/jev-resource-rightsizer/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-JEV%20Resource%20RightSizer-blue)](https://github.com/marketplace/actions/jev-resource-rightsizer)
+[![CI](https://github.com/JevForge/jev-resource-rightsizer/actions/workflows/ci.yml/badge.svg)](https://github.com/JevForge/jev-resource-rightsizer/actions/workflows/ci.yml)
+
 Recommend **scale-down**, **keep**, **scale-up**, or **review** from resource metrics using typed [TypeSafe Jev](https://typesafe.ai) decisions in GitHub Actions.
 
 This action **never changes infrastructure**. It collects evidence, asks Jev for a typed recommendation, validates the answer against a strict schema, then applies a deterministic policy. The only side effects are Action outputs, job summary, optional PR comment/labels, and optional check runs.

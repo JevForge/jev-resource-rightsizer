@@ -1,5 +1,5 @@
 name: JEV Resource RightSizer
-description: Recommend scale-down, keep, scale-up, or review from resource metrics with typed Jev decisions. Never changes infrastructure.
+description: Recommend scale-down, keep, scale-up, or review from metrics with typed Jev decisions.
 author: JevForge
 branding:
   icon: activity
