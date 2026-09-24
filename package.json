@@ -1,6 +1,6 @@
 {
   "name": "jev-resource-rightsizer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Recommend scale-down, keep, scale-up, or review from resource metrics with typed Jev decisions. Never changes infrastructure.",
   "private": true,
   "type": "module",
