@@ -12,6 +12,7 @@ import { collectGcpMonitoring } from './gcp-monitoring.js';
 import { collectPrometheus, type PrometheusQuery } from './prometheus.js';
 import type { CollectResult, ConnectorFetch } from './types.js';
 import { parseCloudWatchDimensions } from './config.js';
+import { actionError } from '../utils/errors.js';
 
 const PrometheusQueriesSchema = z.array(
   z
@@ -102,7 +103,7 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
     );
   } else if (input.metricsPath) {
     const full = resolveInside(input.workspace, input.metricsPath);
-    if (!existsSync(full)) throw new Error(`metrics_path not found: ${input.metricsPath}`);
+    if (!existsSync(full)) throw new Error(actionError(`metrics_path not found: ${input.metricsPath}`));
     collected.push(
       parseNormalizedMetrics(parseYamlOrJson(readBounded(full), input.metricsPath), {
         environment: input.environment,
@@ -113,7 +114,11 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
 
   if (input.cloudwatch?.enabled) {
     if (!input.cloudwatch.namespace || !input.cloudwatch.metricName || !input.cloudwatch.resourceId) {
-      throw new Error('cloudwatch_enabled requires cloudwatch_namespace, cloudwatch_metric_name, and cloudwatch_resource_id');
+      throw new Error(
+        actionError(
+          'cloudwatch_enabled requires cloudwatch_namespace, cloudwatch_metric_name, and cloudwatch_resource_id',
+        ),
+      );
     }
     const client = input.cloudwatch.client ?? (await createDefaultCloudWatchClient());
     collected.push(
@@ -132,7 +137,7 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
   }
 
   if (input.azure?.enabled) {
-    if (!input.azure.resourceId) throw new Error('azure_enabled requires azure_resource_id');
+    if (!input.azure.resourceId) throw new Error(actionError('azure_enabled requires azure_resource_id'));
     const token =
       input.azure.accessToken ??
       (input.azure.credentials
@@ -142,7 +147,11 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
             fetchImpl: input.azure.fetchImpl,
           })
         : undefined);
-    if (!token) throw new Error('Azure Monitor requires access token or AZURE_* credentials');
+    if (!token) {
+      throw new Error(
+        actionError('Azure Monitor authentication failed. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET.'),
+      );
+    }
     collected.push(
       await collectAzureMonitor({
         environment: input.environment,
@@ -161,9 +170,13 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
 
   if (input.gcp?.enabled) {
     if (!input.gcp.projectId || !input.gcp.metricType || !input.gcp.resourceId) {
-      throw new Error('gcp_enabled requires gcp_project_id, gcp_metric_type, and gcp_resource_id');
+      throw new Error(
+        actionError('gcp_enabled requires gcp_project_id, gcp_metric_type, and gcp_resource_id'),
+      );
     }
-    if (!input.gcp.accessToken) throw new Error('GCP Monitoring requires GCP_ACCESS_TOKEN');
+    if (!input.gcp.accessToken) {
+      throw new Error(actionError('GCP Monitoring authentication failed. Set GCP_ACCESS_TOKEN.'));
+    }
     collected.push(
       await collectGcpMonitoring({
         environment: input.environment,
@@ -182,7 +195,9 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
 
   if (input.prometheus?.enabled) {
     if (!input.prometheus.baseUrl || !input.prometheus.resourceId) {
-      throw new Error('prometheus_enabled requires prometheus_url and prometheus_resource_id');
+      throw new Error(
+        actionError('prometheus_enabled requires prometheus_url and prometheus_resource_id'),
+      );
     }
     let queries = input.prometheus.queries ?? [];
     if (!queries.length && input.prometheus.queriesPath) {
@@ -190,7 +205,9 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
       queries = PrometheusQueriesSchema.parse(parseYamlOrJson(readBounded(full), input.prometheus.queriesPath));
     }
     if (!queries.length) {
-      throw new Error('prometheus_enabled requires prometheus_queries_path or inline queries');
+      throw new Error(
+        actionError('prometheus_enabled requires prometheus_queries_path or inline queries'),
+      );
     }
     collected.push(
       await collectPrometheus({

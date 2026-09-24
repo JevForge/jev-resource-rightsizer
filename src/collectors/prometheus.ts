@@ -3,6 +3,7 @@ import { makeResource } from './resource.js';
 import type { CollectResult, ConnectorFetch } from './types.js';
 import type { EnvironmentName, MetricKind, MetricUnit } from '../schemas/enums.js';
 import { withRetry } from '../utils/retry.js';
+import { actionError } from '../utils/errors.js';
 
 export interface PrometheusQuery {
   name: string;
@@ -49,7 +50,9 @@ export async function collectPrometheus(options: PrometheusCollectOptions): Prom
   const fetchImpl = options.fetchImpl ?? fetch;
   const base = options.baseUrl.replace(/\/$/, '');
   if (!base.startsWith('https://') && !base.startsWith('http://localhost') && !base.startsWith('http://127.0.0.1')) {
-    throw new Error('prometheus_url must be HTTPS (or localhost for local development)');
+    throw new Error(
+      actionError('prometheus_url must be HTTPS (or localhost / 127.0.0.1 for local development)'),
+    );
   }
 
   const metrics = [];
@@ -70,7 +73,11 @@ export async function collectPrometheus(options: PrometheusCollectOptions): Prom
           headers,
           signal: AbortSignal.timeout(options.timeoutMs),
         });
-        if (!response.ok) throw new Error(`Prometheus HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(
+            actionError(`Prometheus HTTP ${response.status}. Verify prometheus_url, query, and bearer token.`),
+          );
+        }
         return (await response.json()) as PrometheusQueryRangeResponse;
       },
       { label: `Prometheus ${query.name}`, attempts: 2 },

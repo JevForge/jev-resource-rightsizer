@@ -1,6 +1,7 @@
 import type { EnvironmentName, MetricKind, ReasonCode, Recommendation } from '../schemas/enums.js';
 import type { ObservationWindow, ResourceEvidence, Thresholds } from '../schemas/metrics.js';
 import { uniq } from '../utils/fs.js';
+import { actionError } from '../utils/errors.js';
 import type { CollectResult } from './types.js';
 
 export interface RightsizingReport {
@@ -161,7 +162,9 @@ export function aggregateReport(input: {
 }): RightsizingReport {
   const resources = input.collected.flatMap(item => item.resources);
   if (!resources.length) {
-    throw new Error('No resource metrics were collected. Provide metrics_json, metrics_path, or enable a connector.');
+    throw new Error(
+      actionError('No resource metrics were collected. Provide metrics_json, metrics_path, or enable a connector.'),
+    );
   }
   const sources = uniq(input.collected.flatMap(item => item.sources));
   const warnings = input.collected.flatMap(item => item.warnings);
