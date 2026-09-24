@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 0.1.4 — 2026-09-24
+
+### Added
+
+* Expand unit coverage for load validation, GitHub label/check/comment executors, and connector HTTP failures.
+
 ## 0.1.3 — 2026-09-24
 
 ### Changed
