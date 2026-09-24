@@ -12,7 +12,7 @@ import { createJevProvider } from './jev/factory.js';
 import { assertStateFits, buildEvaluationState } from './jev/questions.js';
 import { normalizeAnswer } from './jev/normalize.js';
 import type { JevProvider } from './jev/types.js';
-import { redactResource } from './utils/sanitize.js';
+import { redactResource, redactResourceRecommendation } from './utils/sanitize.js';
 
 export interface RunRightsizerParams {
   report: RightsizingReport;
@@ -52,7 +52,11 @@ export interface RunRightsizerResult {
 
 export async function runResourceRightsizer(params: RunRightsizerParams): Promise<RunRightsizerResult> {
   const report = params.redactResourceNames
-    ? { ...params.report, resources: params.report.resources.map(redactResource) }
+    ? {
+        ...params.report,
+        resources: params.report.resources.map(redactResource),
+        per_resource_recommendations: params.report.per_resource_recommendations.map(redactResourceRecommendation),
+      }
     : params.report;
   const state = buildEvaluationState(report);
   assertStateFits(state);

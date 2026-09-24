@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ENVIRONMENTS,
   METRIC_KINDS,
+  METRIC_NORMALIZATIONS,
   METRIC_SOURCES,
   METRIC_UNITS,
   RESOURCE_KINDS,
@@ -33,14 +34,27 @@ export const MetricStatsSchema = z
 
 export type MetricStats = z.infer<typeof MetricStatsSchema>;
 
+export const MetricTrendSchema = z
+  .object({
+    slope: z.number().finite(),
+    window_sample_count: z.number().int().nonnegative(),
+    direction: z.enum(['rising', 'falling', 'flat']),
+  })
+  .strict();
+
+export type MetricTrend = z.infer<typeof MetricTrendSchema>;
+
 export const MetricSeriesSchema = z
   .object({
     id: z.string().min(1).max(256),
     kind: z.enum(METRIC_KINDS),
     name: z.string().min(1).max(128),
     unit: z.enum(METRIC_UNITS),
+    source_unit: z.enum(METRIC_UNITS).optional(),
+    normalization: z.enum(METRIC_NORMALIZATIONS).optional(),
     source: z.enum(METRIC_SOURCES),
     stats: MetricStatsSchema,
+    trend: MetricTrendSchema.optional(),
     partial: z.boolean(),
     signal: z.enum(SIGNAL_STRENGTHS),
   })
@@ -60,6 +74,7 @@ export const ResourceEvidenceSchema = z
     metrics: z.array(MetricSeriesSchema).min(1).max(64),
     cost_hourly: z.number().finite().nullable().optional(),
     cost_monthly: z.number().finite().nullable().optional(),
+    excluded: z.boolean().optional(),
   })
   .strict();
 

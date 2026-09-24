@@ -1,6 +1,28 @@
 import { z } from 'zod';
-import { REASON_CODES, RECOMMENDATIONS } from './enums.js';
+import { REASON_CODES, RECOMMENDATIONS, THRESHOLD_PROFILES } from './enums.js';
 import { MetricSeriesSchema, ObservationWindowSchema, ResourceEvidenceSchema, ThresholdsSchema } from './metrics.js';
+
+export const PerResourceRecommendationSchema = z
+  .object({
+    resource_id: z.string().min(1).max(256),
+    recommendation: z.enum(RECOMMENDATIONS),
+    heuristic_recommendation: z.enum(RECOMMENDATIONS),
+    reason_codes: z.array(z.enum(REASON_CODES)).min(1).max(24),
+    excluded: z.boolean(),
+  })
+  .strict();
+
+export type PerResourceRecommendation = z.infer<typeof PerResourceRecommendationSchema>;
+
+export const CostImpactSchema = z
+  .object({
+    basis: z.literal('monthly_cost_x_reduction_factor'),
+    estimated_monthly_impact: z.number().finite(),
+    reduction_factor: z.number().finite().min(0).max(1),
+    is_estimate: z.literal(true),
+  })
+  .strict();
+export type CostImpact = z.infer<typeof CostImpactSchema>;
 
 export const RightsizingDecisionSchema = z
   .object({
@@ -14,6 +36,10 @@ export const RightsizingDecisionSchema = z
     supporting_metrics: z.array(MetricSeriesSchema).max(128),
     resources: z.array(ResourceEvidenceSchema).max(500),
     thresholds: ThresholdsSchema,
+    threshold_profile: z.enum(THRESHOLD_PROFILES).default('balanced'),
+    cost_hourly: z.number().finite().nullable().default(null),
+    cost_monthly: z.number().finite().nullable().default(null),
+    cost_impact: CostImpactSchema.nullable().default(null),
     summary: z.string().min(1).max(500),
     explanation: z.string().max(2_000),
     provisional: z.boolean(),
@@ -21,6 +47,7 @@ export const RightsizingDecisionSchema = z
     partial_count: z.number().int().nonnegative(),
     insufficient_count: z.number().int().nonnegative(),
     heuristic_recommendation: z.enum(RECOMMENDATIONS),
+    per_resource_recommendations: z.array(PerResourceRecommendationSchema).max(500).default([]),
   })
   .strict();
 

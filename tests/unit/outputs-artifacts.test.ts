@@ -48,6 +48,7 @@ describe('outputs and artifacts', () => {
       decision,
     );
     expect(outputs.reason_codes).toContain('SPIKE_DETECTED');
+    expect(JSON.parse(outputs.per_resource_recommendations)).toHaveLength(1);
   });
 
   it('writes decision json and sarif inside workspace', () => {

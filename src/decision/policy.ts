@@ -3,6 +3,7 @@ import { RightsizingDecisionSchema, type RightsizingDecision } from '../schemas/
 import type { LowConfidencePolicy } from '../schemas/enums.js';
 import type { RightsizingReport } from '../collectors/aggregate.js';
 import { buildExplanation, buildSummary } from '../jev/normalize.js';
+import { estimateCostImpact } from '../collectors/cost.js';
 
 export type PolicyOutcome =
   | { status: 'ok'; decision: RightsizingDecision }
@@ -48,11 +49,23 @@ export function applyRightsizingPolicy(
     ...parsed,
     resources: report.resources,
     supporting_metrics: report.resources.flatMap(resource => resource.metrics),
+    per_resource_recommendations: report.per_resource_recommendations,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(parsed.recommendation, report.resources),
   };
 
   if (
     parsed.resources.length !== report.resources.length ||
     parsed.resources.some((resource, index) => resource.id !== report.resources[index]?.id)
+  ) {
+    reasons.add('RIGHTSIZING_VISIBILITY_ENFORCED');
+  }
+  if (
+    parsed.per_resource_recommendations.length !== report.per_resource_recommendations.length ||
+    parsed.per_resource_recommendations.some(
+      (item, index) => item.resource_id !== report.per_resource_recommendations[index]?.resource_id,
+    )
   ) {
     reasons.add('RIGHTSIZING_VISIBILITY_ENFORCED');
   }
@@ -94,6 +107,10 @@ export function applyRightsizingPolicy(
     ...current,
     resources: report.resources,
     supporting_metrics: report.resources.flatMap(resource => resource.metrics),
+    per_resource_recommendations: report.per_resource_recommendations,
+    cost_hourly: report.cost_hourly,
+    cost_monthly: report.cost_monthly,
+    cost_impact: estimateCostImpact(current.recommendation, report.resources),
     reason_codes: [...reasons].slice(0, 24),
   });
 

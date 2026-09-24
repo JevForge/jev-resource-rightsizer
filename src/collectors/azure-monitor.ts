@@ -1,15 +1,18 @@
-import { summarizeValues } from '../utils/stats.js';
+import { summarizeTrend, summarizeValues } from '../utils/stats.js';
 import { makeResource } from './resource.js';
 import type { CollectResult, ConnectorFetch } from './types.js';
 import type { EnvironmentName } from '../schemas/enums.js';
 import { withRetry } from '../utils/retry.js';
 import { actionError } from '../utils/errors.js';
+import { normalizeMetricValues, inferMetricKind } from './units.js';
+import { safeError } from '../utils/sanitize.js';
 
 export interface AzureMonitorCollectOptions {
   environment: EnvironmentName;
   window: { start: string; end: string };
   subscriptionId: string;
-  resourceId: string;
+  resourceId?: string;
+  resourceIds?: string[];
   metricNames: string[];
   accessToken: string;
   service?: string;
@@ -26,90 +29,105 @@ interface AzureMetricValue {
 }
 
 interface AzureMetricsResponse {
+  nextLink?: string;
   value?: Array<{
     name?: { value?: string };
+    unit?: string;
     timeseries?: Array<{ data?: AzureMetricValue[] }>;
   }>;
 }
 
-function kindFromMetric(name: string): 'cpu' | 'memory' | 'network' | 'disk' | 'requests' | 'custom' {
-  const lower = name.toLowerCase();
-  if (lower.includes('cpu') || lower.includes('percentage cpu')) return 'cpu';
-  if (lower.includes('mem')) return 'memory';
-  if (lower.includes('network')) return 'network';
-  if (lower.includes('disk')) return 'disk';
-  if (lower.includes('request')) return 'requests';
-  return 'custom';
-}
-
 export async function collectAzureMonitor(options: AzureMonitorCollectOptions): Promise<CollectResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const metricNames = options.metricNames.join(',');
-  const url =
-    `https://management.azure.com${options.resourceId}/providers/microsoft.insights/metrics` +
-    `?api-version=2023-10-01&timespan=${encodeURIComponent(`${options.window.start}/${options.window.end}`)}` +
-    `&interval=PT5M&aggregation=Average,Maximum,Minimum&metricnames=${encodeURIComponent(metricNames)}`;
+  const resourceIds = options.resourceIds?.length ? options.resourceIds : options.resourceId ? [options.resourceId] : [];
+  if (!resourceIds.length) throw new Error(actionError('Azure Monitor batch requires at least one resource.'));
+  const metricNames = options.metricNames.length ? options.metricNames : ['Percentage CPU'];
+  const warnings: string[] = [];
+  const resources = [];
 
-  const body = await withRetry(
-    async () => {
-      const response = await fetchImpl(url, {
-        headers: { authorization: `Bearer ${options.accessToken}` },
-        signal: AbortSignal.timeout(options.timeoutMs),
-      });
-      if (!response.ok) {
-        throw new Error(
-          actionError(
-            `Azure Monitor HTTP ${response.status}. Verify the resource id and that the identity has Monitoring Reader.`,
-          ),
-        );
+  for (const resourceId of resourceIds) {
+    const metricsByName = new Map<string, { unit?: string; points: AzureMetricValue[] }>();
+    let nextUrl: string | undefined =
+      `https://management.azure.com${resourceId}/providers/microsoft.insights/metrics` +
+      `?api-version=2023-10-01&timespan=${encodeURIComponent(`${options.window.start}/${options.window.end}`)}` +
+      `&interval=PT5M&aggregation=Average,Maximum,Minimum&metricnames=${encodeURIComponent(metricNames.join(','))}`;
+    do {
+      const body = await withRetry(
+        async () => {
+          let response: Response;
+          try {
+            response = await fetchImpl(nextUrl!, {
+              headers: { authorization: `Bearer ${options.accessToken}` },
+              signal: AbortSignal.timeout(options.timeoutMs),
+            });
+          } catch (error) {
+            throw new Error(actionError(`Azure Monitor request failed: ${safeError(error)}`));
+          }
+          if (!response.ok) {
+            throw new Error(
+              actionError(
+                `Azure Monitor HTTP ${response.status}. Verify the resource id and that the identity has Monitoring Reader.`,
+              ),
+            );
+          }
+          return (await response.json()) as AzureMetricsResponse;
+        },
+        { label: 'Azure Monitor', attempts: 2 },
+      );
+      for (const metric of body.value ?? []) {
+        const name = metric.name?.value ?? 'metric';
+        const entry = metricsByName.get(name) ?? { unit: metric.unit, points: [] };
+        entry.unit ??= metric.unit;
+        entry.points.push(...(metric.timeseries ?? []).flatMap(series => series.data ?? []));
+        metricsByName.set(name, entry);
       }
-      return (await response.json()) as AzureMetricsResponse;
-    },
-    { label: 'Azure Monitor', attempts: 2 },
-  );
+      nextUrl = body.nextLink;
+    } while (nextUrl);
 
-  const metrics = (body.value ?? []).map(metric => {
-    const points = (metric.timeseries ?? []).flatMap(series => series.data ?? []);
-    const averages = points
-      .map(point => point.average)
-      .filter((value): value is number => value != null && Number.isFinite(value));
-    const stats = summarizeValues(averages);
-    const name = metric.name?.value ?? 'metric';
-    const kind = kindFromMetric(name);
-    return {
-      kind,
-      name,
-      unit: kind === 'cpu' || kind === 'memory' || kind === 'disk' ? ('percent' as const) : ('other' as const),
-      source: 'azure-monitor' as const,
-      stats,
-      minSampleCount: options.minSampleCount,
-      partial: stats.sample_count === 0,
-    };
-  });
-
-  if (!metrics.length) {
-    return {
-      resources: [],
-      warnings: ['Azure Monitor returned no metrics for the selected resource.'],
-      sources: ['azure-monitor'],
-    };
+    const metrics = [...metricsByName.entries()].map(([name, entry]) => {
+      const kind = inferMetricKind(name);
+      const nativeUnit = entry.unit ?? (name.toLowerCase().includes('byte') ? 'bytes' : undefined);
+      const averages = entry.points.map(point => point.average).filter((value): value is number => value != null && Number.isFinite(value));
+      const normalized = normalizeMetricValues(averages, kind, nativeUnit);
+      const stats = summarizeValues(normalized.values);
+      const maximums = entry.points.map(point => point.maximum).filter((value): value is number => value != null && Number.isFinite(value));
+      const minimums = entry.points.map(point => point.minimum).filter((value): value is number => value != null && Number.isFinite(value));
+      const max = normalizeMetricValues(maximums, kind, nativeUnit).values;
+      const min = normalizeMetricValues(minimums, kind, nativeUnit).values;
+      if (!stats.sample_count) warnings.push(`Azure Monitor returned no samples for ${resourceId}/${name}.`);
+      return {
+        kind,
+        name,
+        unit: normalized.unit,
+        source_unit: normalized.source_unit,
+        normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
+        source: 'azure-monitor' as const,
+        stats: {
+          ...stats,
+          max: max.length ? Math.max(...max) : stats.max,
+          min: min.length ? Math.min(...min) : stats.min,
+        },
+        minSampleCount: options.minSampleCount,
+        partial: stats.sample_count === 0,
+      };
+    });
+    if (metrics.length) {
+      resources.push(
+        makeResource({
+          resource_id: resourceId,
+          service: options.service ?? 'azure',
+          resource_kind: 'compute',
+          environment: options.environment,
+          metrics,
+        }),
+      );
+    } else {
+      warnings.push(`Azure Monitor returned no metrics for ${resourceId}.`);
+    }
   }
 
-  return {
-    resources: [
-      makeResource({
-        resource_id: options.resourceId,
-        service: options.service ?? 'azure',
-        resource_kind: 'compute',
-        environment: options.environment,
-        metrics,
-      }),
-    ],
-    warnings: metrics.every(metric => metric.partial)
-      ? ['Azure Monitor returned empty timeseries for the observation window.']
-      : [],
-    sources: ['azure-monitor'],
-  };
+  return { resources, warnings, sources: ['azure-monitor'] };
 }
 
 export async function acquireAzureToken(credentials: {

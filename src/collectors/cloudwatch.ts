@@ -1,7 +1,10 @@
-import { summarizeValues } from '../utils/stats.js';
+import { summarizeTrend, summarizeValues } from '../utils/stats.js';
 import { makeResource } from './resource.js';
 import type { CollectResult } from './types.js';
-import type { EnvironmentName } from '../schemas/enums.js';
+import { normalizeMetricValues, inferMetricKind } from './units.js';
+import type { EnvironmentName, MetricKind, MetricUnit, ResourceKind } from '../schemas/enums.js';
+import { actionError } from '../utils/errors.js';
+import { safeError } from '../utils/sanitize.js';
 
 export interface CloudWatchDatapoint {
   Timestamp?: Date | string;
@@ -9,6 +12,7 @@ export interface CloudWatchDatapoint {
   Maximum?: number;
   Minimum?: number;
   SampleCount?: number;
+  Unit?: string;
 }
 
 export interface CloudWatchClient {
@@ -27,74 +31,95 @@ export interface CloudWatchCollectOptions {
   environment: EnvironmentName;
   window: { start: string; end: string };
   namespace: string;
-  metricName: string;
-  dimensions: Array<{ Name: string; Value: string }>;
-  resourceId: string;
+  metricName?: string;
+  dimensions?: Array<{ Name: string; Value: string }>;
+  resourceId?: string;
+  metrics?: Array<{ metricName: string; kind?: MetricKind; unit?: MetricUnit; name?: string }>;
+  resources?: Array<{
+    resourceId: string;
+    dimensions?: Array<{ Name: string; Value: string }>;
+    service?: string;
+    resourceKind?: ResourceKind;
+  }>;
   service: string;
   periodSeconds?: number;
   client: CloudWatchClient;
   minSampleCount: number;
 }
 
-function kindFromMetric(name: string): 'cpu' | 'memory' | 'network' | 'disk' | 'requests' | 'custom' {
-  const lower = name.toLowerCase();
-  if (lower.includes('cpu')) return 'cpu';
-  if (lower.includes('mem')) return 'memory';
-  if (lower.includes('network') || lower.includes('bytes')) return 'network';
-  if (lower.includes('disk')) return 'disk';
-  if (lower.includes('request') || lower.includes('count')) return 'requests';
-  return 'custom';
-}
-
 export async function collectCloudWatch(options: CloudWatchCollectOptions): Promise<CollectResult> {
-  const response = await options.client.getMetricStatistics({
-    namespace: options.namespace,
-    metricName: options.metricName,
-    dimensions: options.dimensions,
-    startTime: new Date(options.window.start),
-    endTime: new Date(options.window.end),
-    period: options.periodSeconds ?? 300,
-statistics: ['Average', 'Maximum', 'Minimum', 'SampleCount'] as const,
-    });
-    const averages = (response.Datapoints ?? [])
-    .map(point => point.Average)
-    .filter((value): value is number => value != null && Number.isFinite(value));
-  const stats = summarizeValues(averages);
-  const max = Math.max(
-    ...((response.Datapoints ?? []).map(point => point.Maximum).filter((value): value is number => value != null)),
-    Number.NEGATIVE_INFINITY,
-  );
-  const min = Math.min(
-    ...((response.Datapoints ?? []).map(point => point.Minimum).filter((value): value is number => value != null)),
-    Number.POSITIVE_INFINITY,
-  );
-  const kind = kindFromMetric(options.metricName);
-  const resource = makeResource({
-    resource_id: options.resourceId,
-    service: options.service,
-    resource_kind: 'compute',
-    environment: options.environment,
-    metrics: [
-      {
+  const metrics = options.metrics?.length
+    ? options.metrics
+    : options.metricName
+      ? [{ metricName: options.metricName }]
+      : [];
+  const resources = options.resources?.length
+    ? options.resources
+    : options.resourceId
+      ? [{ resourceId: options.resourceId, dimensions: options.dimensions, service: options.service }]
+      : [];
+  if (!metrics.length || !resources.length) {
+    throw new Error(actionError('CloudWatch batch requires at least one metric and one resource.'));
+  }
+
+  const warnings: string[] = [];
+  const output = [];
+  for (const target of resources) {
+    const metricDrafts = [];
+    for (const query of metrics) {
+      let response: { Datapoints?: CloudWatchDatapoint[] };
+      try {
+        response = await options.client.getMetricStatistics({
+          namespace: options.namespace,
+          metricName: query.metricName,
+          dimensions: target.dimensions ?? options.dimensions ?? [],
+          startTime: new Date(options.window.start),
+          endTime: new Date(options.window.end),
+          period: options.periodSeconds ?? 300,
+          statistics: ['Average', 'Maximum', 'Minimum', 'SampleCount'] as const,
+        });
+      } catch (error) {
+        throw new Error(actionError(`CloudWatch request failed for ${query.metricName}: ${safeError(error)}`));
+      }
+      const kind = query.kind ?? inferMetricKind(query.metricName);
+      const points = response.Datapoints ?? [];
+      const nativeUnit = query.unit ?? points.find(point => point.Unit)?.Unit;
+      const averages = points.map(point => point.Average).filter((value): value is number => value != null && Number.isFinite(value));
+      const normalized = query.unit
+        ? { values: averages, unit: query.unit, source_unit: query.unit, normalization: 'identity' as const }
+        : normalizeMetricValues(averages, kind, nativeUnit);
+      const stats = summarizeValues(normalized.values);
+      const maximums = points.map(point => point.Maximum).filter((value): value is number => value != null && Number.isFinite(value));
+      const minimums = points.map(point => point.Minimum).filter((value): value is number => value != null && Number.isFinite(value));
+      const normalizedMaximum = query.unit ? maximums : normalizeMetricValues(maximums, kind, nativeUnit).values;
+      const normalizedMinimum = query.unit ? minimums : normalizeMetricValues(minimums, kind, nativeUnit).values;
+      const max = Math.max(...normalizedMaximum, Number.NEGATIVE_INFINITY);
+      const min = Math.min(...normalizedMinimum, Number.POSITIVE_INFINITY);
+      if (!stats.sample_count) warnings.push(`CloudWatch returned no datapoints for ${target.resourceId}/${query.metricName}.`);
+      metricDrafts.push({
         kind,
-        name: options.metricName,
-        unit: kind === 'cpu' || kind === 'memory' || kind === 'disk' ? 'percent' : 'other',
-        source: 'cloudwatch',
-        stats: {
-          ...stats,
-          max: Number.isFinite(max) ? max : stats.max,
-          min: Number.isFinite(min) ? min : stats.min,
-        },
+        name: query.name ?? query.metricName,
+        unit: normalized.unit,
+        source_unit: normalized.source_unit,
+        normalization: normalized.normalization,
+        trend: summarizeTrend(normalized.values),
+        source: 'cloudwatch' as const,
+        stats: { ...stats, max: Number.isFinite(max) ? max : stats.max, min: Number.isFinite(min) ? min : stats.min },
         minSampleCount: options.minSampleCount,
         partial: stats.sample_count === 0,
-      },
-    ],
-  });
-  return {
-    resources: [resource],
-    warnings: stats.sample_count === 0 ? ['CloudWatch returned no datapoints for the observation window.'] : [],
-    sources: ['cloudwatch'],
-  };
+      });
+    }
+    output.push(
+      makeResource({
+        resource_id: target.resourceId,
+        service: target.service ?? options.service ?? 'aws',
+        resource_kind: target.resourceKind ?? 'compute',
+        environment: options.environment,
+        metrics: metricDrafts,
+      }),
+    );
+  }
+  return { resources: output, warnings, sources: ['cloudwatch'] };
 }
 
 export async function createDefaultCloudWatchClient(region?: string): Promise<CloudWatchClient> {

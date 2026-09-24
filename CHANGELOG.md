@@ -2,6 +2,57 @@
 
 ## [Unreleased]
 
+## 0.1.12 — 2026-09-24
+
+### Changed
+
+* Ignore local agent, test, security, SARIF, and review artifacts that are not shipped by the Action.
+* Pin the provider smoke workflow actions to immutable commit SHAs.
+* Update GitHub API, Vitest, and esbuild dependencies; `npm audit` is clean.
+* Keep byte-valued memory and other non-percent metrics out of percentage-based heuristics while preserving the raw evidence.
+
+## 0.1.11 — 2026-09-24
+
+### Added
+
+* Add a manual provider-mock smoke workflow that runs the bundled Action against a golden fixture.
+* Permit HTTP only for loopback custom-provider endpoints used by local smoke tests; external endpoints remain HTTPS-only.
+
+## 0.1.10 — 2026-09-24
+
+### Added
+
+* Add ordered metric trend slope/window evidence and `TREND_RISING` / `TREND_FALLING` reasons.
+* Add typed optional cost impact estimates derived from `cost_hourly` / `cost_monthly`.
+
+## 0.1.9 — 2026-09-24
+
+### Added
+
+* Add `conservative`, `balanced`, and `aggressive` threshold profiles with environment-aware defaults.
+* Expose the selected `threshold_profile` in the decision contract and Action outputs.
+
+## 0.1.8 — 2026-09-24
+
+### Added
+
+* Add `per_resource_recommendations` while retaining one global Jev decision.
+* Preserve filtered resources as `review`/`RESOURCE_FILTERED` in the per-resource evidence.
+
+## 0.1.7 — 2026-09-24
+
+### Added
+
+* Expand CloudWatch, Azure Monitor, GCP Monitoring, and Prometheus connectors to a batch-of-metrics-per-resource contract.
+* Normalize provider units explicitly, including GCP ratios to percent and byte-valued memory metrics.
+* Follow Azure/GCP pagination and retain provider failures as prefixed, actionable errors.
+
+## 0.1.6 — 2026-09-24
+
+### Added
+
+* Add include/exclude resource filters matched against resource id, service, or resource kind.
+
 ## 0.1.5 — 2026-09-24
 
 ### Added

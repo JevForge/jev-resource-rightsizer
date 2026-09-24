@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { z } from 'zod';
 import { ThresholdsSchema, type ObservationWindow, type Thresholds } from '../schemas/metrics.js';
-import type { EnvironmentName } from '../schemas/enums.js';
+import type { EnvironmentName, ThresholdProfile } from '../schemas/enums.js';
 import { parseYamlOrJson, readBounded } from '../utils/fs.js';
 import { resolveInside } from '../utils/sanitize.js';
 import { aggregateReport, type RightsizingReport } from './aggregate.js';
@@ -33,6 +33,7 @@ const PrometheusQueriesSchema = z.array(
           'other',
         ])
         .optional(),
+      resourceLabel: z.string().min(1).max(64).optional(),
     })
     .strict(),
 );
@@ -42,20 +43,24 @@ export interface LoadMetricsInput {
   environment: EnvironmentName;
   window: ObservationWindow;
   thresholds: Thresholds;
+  thresholdProfile?: ThresholdProfile;
   metricsPath?: string;
   metricsDocument?: unknown;
   cloudwatch?: {
     enabled: boolean;
     namespace?: string;
     metricName?: string;
+    metricNames?: string[];
     dimensionsRaw?: string;
     resourceId?: string;
+    resourceIds?: string[];
     service?: string;
     client?: CloudWatchClient;
   };
   azure?: {
     enabled: boolean;
     resourceId?: string;
+    resourceIds?: string[];
     metricNames?: string[];
     service?: string;
     timeoutMs: number;
@@ -72,7 +77,9 @@ export interface LoadMetricsInput {
     enabled: boolean;
     projectId?: string;
     metricType?: string;
+    metricTypes?: string[];
     resourceId?: string;
+    resourceIds?: string[];
     service?: string;
     timeoutMs: number;
     accessToken?: string;
@@ -82,6 +89,7 @@ export interface LoadMetricsInput {
     enabled: boolean;
     baseUrl?: string;
     resourceId?: string;
+    resourceIds?: string[];
     service?: string;
     queriesPath?: string;
     queries?: PrometheusQuery[];
@@ -89,6 +97,8 @@ export interface LoadMetricsInput {
     timeoutMs: number;
     fetchImpl?: ConnectorFetch;
   };
+  includeResources?: string[];
+  excludeResources?: string[];
 }
 
 export async function loadMetricsReport(input: LoadMetricsInput): Promise<RightsizingReport> {
@@ -113,10 +123,20 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
   }
 
   if (input.cloudwatch?.enabled) {
-    if (!input.cloudwatch.namespace || !input.cloudwatch.metricName || !input.cloudwatch.resourceId) {
+    const metricNames = input.cloudwatch.metricNames?.length
+      ? input.cloudwatch.metricNames
+      : input.cloudwatch.metricName
+        ? [input.cloudwatch.metricName]
+        : [];
+    const resourceIds = input.cloudwatch.resourceIds?.length
+      ? input.cloudwatch.resourceIds
+      : input.cloudwatch.resourceId
+        ? [input.cloudwatch.resourceId]
+        : [];
+    if (!input.cloudwatch.namespace || !metricNames.length || !resourceIds.length) {
       throw new Error(
         actionError(
-          'cloudwatch_enabled requires cloudwatch_namespace, cloudwatch_metric_name, and cloudwatch_resource_id',
+          'cloudwatch_enabled requires cloudwatch_namespace, at least one metric name, and at least one resource id',
         ),
       );
     }
@@ -127,8 +147,10 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
         window: input.window,
         namespace: input.cloudwatch.namespace,
         metricName: input.cloudwatch.metricName,
+        metrics: metricNames.map(metricName => ({ metricName })),
         dimensions: parseCloudWatchDimensions(input.cloudwatch.dimensionsRaw),
         resourceId: input.cloudwatch.resourceId,
+        resources: resourceIds.map(resourceId => ({ resourceId })),
         service: input.cloudwatch.service ?? 'aws',
         client,
         minSampleCount: input.thresholds.min_sample_count,
@@ -137,7 +159,12 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
   }
 
   if (input.azure?.enabled) {
-    if (!input.azure.resourceId) throw new Error(actionError('azure_enabled requires azure_resource_id'));
+    const resourceIds = input.azure.resourceIds?.length
+      ? input.azure.resourceIds
+      : input.azure.resourceId
+        ? [input.azure.resourceId]
+        : [];
+    if (!resourceIds.length) throw new Error(actionError('azure_enabled requires azure_resource_id or azure_resource_ids'));
     const token =
       input.azure.accessToken ??
       (input.azure.credentials
@@ -158,6 +185,7 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
         window: input.window,
         subscriptionId: input.azure.credentials?.subscriptionId ?? '',
         resourceId: input.azure.resourceId,
+        resourceIds,
         metricNames: input.azure.metricNames?.length ? input.azure.metricNames : ['Percentage CPU'],
         accessToken: token,
         service: input.azure.service,
@@ -169,9 +197,19 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
   }
 
   if (input.gcp?.enabled) {
-    if (!input.gcp.projectId || !input.gcp.metricType || !input.gcp.resourceId) {
+    const metricTypes = input.gcp.metricTypes?.length
+      ? input.gcp.metricTypes
+      : input.gcp.metricType
+        ? [input.gcp.metricType]
+        : [];
+    const resourceIds = input.gcp.resourceIds?.length
+      ? input.gcp.resourceIds
+      : input.gcp.resourceId
+        ? [input.gcp.resourceId]
+        : [];
+    if (!input.gcp.projectId || !metricTypes.length || !resourceIds.length) {
       throw new Error(
-        actionError('gcp_enabled requires gcp_project_id, gcp_metric_type, and gcp_resource_id'),
+        actionError('gcp_enabled requires gcp_project_id, at least one metric type, and at least one resource id'),
       );
     }
     if (!input.gcp.accessToken) {
@@ -184,6 +222,8 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
         projectId: input.gcp.projectId,
         resourceId: input.gcp.resourceId,
         metricType: input.gcp.metricType,
+        resourceIds,
+        metricTypes,
         accessToken: input.gcp.accessToken,
         service: input.gcp.service,
         timeoutMs: input.gcp.timeoutMs,
@@ -194,9 +234,14 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
   }
 
   if (input.prometheus?.enabled) {
-    if (!input.prometheus.baseUrl || !input.prometheus.resourceId) {
+    const resourceIds = input.prometheus.resourceIds?.length
+      ? input.prometheus.resourceIds
+      : input.prometheus.resourceId
+        ? [input.prometheus.resourceId]
+        : [];
+    if (!input.prometheus.baseUrl || !resourceIds.length) {
       throw new Error(
-        actionError('prometheus_enabled requires prometheus_url and prometheus_resource_id'),
+        actionError('prometheus_enabled requires prometheus_url and at least one prometheus resource id'),
       );
     }
     let queries = input.prometheus.queries ?? [];
@@ -215,6 +260,7 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
         window: input.window,
         baseUrl: input.prometheus.baseUrl,
         resourceId: input.prometheus.resourceId,
+        resourceIds,
         service: input.prometheus.service,
         queries,
         bearerToken: input.prometheus.bearerToken,
@@ -229,6 +275,11 @@ export async function loadMetricsReport(input: LoadMetricsInput): Promise<Rights
     environment: input.environment,
     window: input.window,
     thresholds: ThresholdsSchema.parse(input.thresholds),
+    thresholdProfile: input.thresholdProfile,
     collected,
+    filters: {
+      include: input.includeResources,
+      exclude: input.excludeResources,
+    },
   });
 }

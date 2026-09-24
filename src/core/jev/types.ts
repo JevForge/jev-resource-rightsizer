@@ -1,5 +1,5 @@
 import type { JevProviderId } from '../../schemas/enums.js';
-import type { RightsizingDecision } from '../../schemas/decision.js';
+import type { CostImpact, PerResourceRecommendation, RightsizingDecision } from '../../schemas/decision.js';
 import type { RightsizingReport } from '../../collectors/aggregate.js';
 
 export interface RightsizingEvaluationState {
@@ -13,6 +13,7 @@ export interface RightsizingEvaluationState {
     min_sample_count: number;
     spike_ratio: number;
   };
+  threshold_profile: string;
   heuristic_recommendation: string;
   factual_reasons: string[];
   primary_resource_id: string | null;
@@ -20,10 +21,13 @@ export interface RightsizingEvaluationState {
   memory_avg: number | null;
   request_avg: number | null;
   cost_hourly: number | null;
+  cost_monthly: number | null;
+  cost_impact: CostImpact | null;
   partial_count: number;
   insufficient_count: number;
   sources: string[];
   warnings: string[];
+  per_resource_recommendations: PerResourceRecommendation[];
   resources: Array<{
     resource_id: string;
     service: string;

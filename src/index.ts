@@ -4,6 +4,7 @@ import {
   loadRightsizerConfig,
   pickBoolean,
   pickEnvironment,
+  pickList,
   pickNumber,
   pickPolicy,
   pickProvider,
@@ -11,6 +12,8 @@ import {
   splitList,
 } from './collectors/config.js';
 import { loadMetricsReport } from './collectors/load.js';
+import { defaultThresholdProfile, thresholdsForProfile, THRESHOLD_PROFILES } from './collectors/profiles.js';
+import type { ThresholdProfile } from './schemas/enums.js';
 import { ThresholdsSchema } from './schemas/metrics.js';
 import { applyOutcome } from './github/outputs.js';
 import { writeDecisionJson, writeDecisionSarif } from './github/artifacts.js';
@@ -44,29 +47,39 @@ async function main(): Promise<void> {
     start: pickString(core.getInput('window_start'), config.window_start, fallbackWindow.start) ?? fallbackWindow.start,
     end: pickString(core.getInput('window_end'), config.window_end, fallbackWindow.end) ?? fallbackWindow.end,
   };
+  const thresholdProfileValue = pickString(
+    core.getInput('threshold_profile'),
+    config.threshold_profile,
+    defaultThresholdProfile(environment),
+  );
+  if (!thresholdProfileValue || !THRESHOLD_PROFILES.includes(thresholdProfileValue as ThresholdProfile)) {
+    throw new Error(actionError(`Unsupported threshold_profile: ${thresholdProfileValue}`));
+  }
+  const thresholdProfile = thresholdProfileValue as ThresholdProfile;
+  const profileDefaults = thresholdsForProfile(thresholdProfile);
   const thresholds = ThresholdsSchema.parse({
     scale_down_cpu_pct: pickNumber(
       core.getInput('scale_down_cpu_pct'),
       config.thresholds?.scale_down_cpu_pct,
-      20,
+      profileDefaults.scale_down_cpu_pct,
     ),
-    scale_up_cpu_pct: pickNumber(core.getInput('scale_up_cpu_pct'), config.thresholds?.scale_up_cpu_pct, 75),
+    scale_up_cpu_pct: pickNumber(core.getInput('scale_up_cpu_pct'), config.thresholds?.scale_up_cpu_pct, profileDefaults.scale_up_cpu_pct),
     scale_down_memory_pct: pickNumber(
       core.getInput('scale_down_memory_pct'),
       config.thresholds?.scale_down_memory_pct,
-      30,
+      profileDefaults.scale_down_memory_pct,
     ),
     scale_up_memory_pct: pickNumber(
       core.getInput('scale_up_memory_pct'),
       config.thresholds?.scale_up_memory_pct,
-      80,
+      profileDefaults.scale_up_memory_pct,
     ),
     min_sample_count: pickNumber(
       core.getInput('min_sample_count'),
       config.thresholds?.min_sample_count,
-      12,
+      profileDefaults.min_sample_count,
     ),
-    spike_ratio: pickNumber(core.getInput('spike_ratio'), config.thresholds?.spike_ratio, 2.5),
+    spike_ratio: pickNumber(core.getInput('spike_ratio'), config.thresholds?.spike_ratio, profileDefaults.spike_ratio),
   });
 
   const metricsJson = core.getInput('metrics_json').trim();
@@ -90,19 +103,23 @@ async function main(): Promise<void> {
     environment,
     window,
     thresholds,
+    thresholdProfile,
     metricsPath,
     metricsDocument: metricsJson ? (JSON.parse(metricsJson) as unknown) : undefined,
     cloudwatch: {
       enabled: cloudwatchEnabled,
       namespace: pickString(core.getInput('cloudwatch_namespace'), config.cloudwatch_namespace),
       metricName: pickString(core.getInput('cloudwatch_metric_name'), config.cloudwatch_metric_name),
+      metricNames: splitList(pickString(core.getInput('cloudwatch_metric_names'), config.cloudwatch_metric_names)),
       dimensionsRaw: pickString(core.getInput('cloudwatch_dimensions'), config.cloudwatch_dimensions),
       resourceId: pickString(core.getInput('cloudwatch_resource_id'), config.cloudwatch_resource_id),
+      resourceIds: splitList(pickString(core.getInput('cloudwatch_resource_ids'), config.cloudwatch_resource_ids)),
       service: pickString(core.getInput('cloudwatch_service'), undefined, 'aws'),
     },
     azure: {
       enabled: azureEnabled,
       resourceId: pickString(core.getInput('azure_resource_id'), config.azure_resource_id),
+      resourceIds: splitList(pickString(core.getInput('azure_resource_ids'), config.azure_resource_ids)),
       metricNames: (() => {
         const fromInput = splitList(core.getInput('azure_metric_names'));
         if (fromInput.length) return fromInput;
@@ -122,7 +139,9 @@ async function main(): Promise<void> {
       enabled: gcpEnabled,
       projectId: pickString(core.getInput('gcp_project_id'), config.gcp_project_id ?? env('GCP_PROJECT_ID')),
       metricType: pickString(core.getInput('gcp_metric_type'), config.gcp_metric_type),
+      metricTypes: splitList(pickString(core.getInput('gcp_metric_types'), config.gcp_metric_types)),
       resourceId: pickString(core.getInput('gcp_resource_id'), config.gcp_resource_id),
+      resourceIds: splitList(pickString(core.getInput('gcp_resource_ids'), config.gcp_resource_ids)),
       timeoutMs: pickNumber(core.getInput('connector_timeout_ms'), undefined, 20_000),
       accessToken: env('GCP_ACCESS_TOKEN'),
     },
@@ -130,10 +149,13 @@ async function main(): Promise<void> {
       enabled: prometheusEnabled,
       baseUrl: pickString(core.getInput('prometheus_url'), config.prometheus_url ?? env('PROMETHEUS_URL')),
       resourceId: pickString(core.getInput('prometheus_resource_id'), config.prometheus_resource_id),
+      resourceIds: splitList(pickString(core.getInput('prometheus_resource_ids'), config.prometheus_resource_ids)),
       queriesPath: pickString(core.getInput('prometheus_queries_path'), config.prometheus_queries_path),
       bearerToken: env('PROMETHEUS_BEARER_TOKEN'),
       timeoutMs: pickNumber(core.getInput('connector_timeout_ms'), undefined, 20_000),
     },
+    includeResources: pickList(core.getInput('include_resources'), config.include_resources),
+    excludeResources: pickList(core.getInput('exclude_resources'), config.exclude_resources),
   });
 
   const commentOnGithub = pickBoolean(core.getInput('comment_on_github'), config.comment_on_github, false);

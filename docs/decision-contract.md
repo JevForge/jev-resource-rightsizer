@@ -8,6 +8,15 @@
 
 Jev receives a typed evaluation state and answers a `choice` question (`decision`) plus an `estimates_incomplete` boolean. The Action uses AI SDK `experimental_evaluate` for `vercel-ai-gateway` (model `typesafe-ai/jev`) and an HTTPS evaluate POST for native/custom providers. All providers normalize to the same `JevRawAnswer`.
 
+The final decision also includes `per_resource_recommendations`. These are
+deterministic heuristic baselines for each resource, including reason codes and
+whether a resource was filtered; they are informational only and never mutate
+infrastructure.
+
+When cost signals exist, `cost_impact` is an estimate based on monthly cost and a
+20% reduction/increase factor. It is not a billing reconciliation and is `null`
+for `keep`/`review` or when no cost signal exists.
+
 ## Deterministic executor limits
 
 After schema validation, only allowlisted effects run:
@@ -32,6 +41,7 @@ No resize, restart, terraform apply, kubectl scale, or cloud write APIs are invo
   "primary_resource_id": "api-prod-1",
   "supporting_metrics": [],
   "resources": [],
+  "threshold_profile": "balanced",
   "thresholds": {
     "scale_down_cpu_pct": 20,
     "scale_up_cpu_pct": 75,

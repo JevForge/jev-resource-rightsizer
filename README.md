@@ -11,7 +11,7 @@ Teams often guess at instance and container sizes. Underutilized fleets waste mo
 
 ```yaml
 - id: size
-  uses: JevForge/jev-resource-rightsizer@v0.1.1
+  uses: JevForge/jev-resource-rightsizer@v0.1.12
   env:
     AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
   with:
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.1
+        uses: JevForge/jev-resource-rightsizer@v0.1.12
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -115,7 +115,7 @@ jobs:
           echo "summary=${{ steps.size.outputs.summary }}"
 ```
 
-Pin `@v0.1.1` for reproducibility, or `@v0` for the floating major line.
+Pin `@v0.1.12` for reproducibility, or `@v0` for the floating major line.
 
 ## Complete Example
 
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.1
+        uses: JevForge/jev-resource-rightsizer@v0.1.12
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -191,20 +191,28 @@ More workflows: [`examples/basic.yml`](examples/basic.yml), [`examples/pr-gate.y
 | `scale_up_memory_pct` | no | `80` | Memory % scale-up threshold |
 | `min_sample_count` | no | `12` | Samples required for a strong signal |
 | `spike_ratio` | no | `2.5` | `max/avg` spike ratio that forces review |
+| `threshold_profile` | no | environment-aware | `conservative` \| `balanced` \| `aggressive` preset; explicit thresholds override the preset |
 | `cloudwatch_enabled` | no | `false` | Query AWS CloudWatch |
 | `cloudwatch_namespace` | no | — | e.g. `AWS/EC2` |
 | `cloudwatch_metric_name` | no | — | e.g. `CPUUtilization` |
+| `cloudwatch_metric_names` | no | — | Comma/newline metric names for batch collection |
 | `cloudwatch_dimensions` | no | — | `Name=Value` pairs or JSON array |
 | `cloudwatch_resource_id` | no | — | Stable id for outputs |
+| `cloudwatch_resource_ids` | no | — | Comma/newline resource ids for batch collection |
 | `azure_enabled` | no | `false` | Query Azure Monitor |
 | `azure_resource_id` | no | — | Full Azure resource id |
+| `azure_resource_ids` | no | — | Comma/newline full Azure resource ids |
 | `azure_metric_names` | no | `Percentage CPU` | Comma/newline metric names |
 | `gcp_enabled` | no | `false` | Query GCP Monitoring |
 | `gcp_project_id` / `gcp_metric_type` / `gcp_resource_id` | no | — | GCP query target |
+| `gcp_metric_types` / `gcp_resource_ids` | no | — | Comma/newline GCP batch query targets |
 | `prometheus_enabled` | no | `false` | Query Prometheus `query_range` |
 | `prometheus_url` | no | — | HTTPS base URL (localhost allowed) |
 | `prometheus_resource_id` | no | — | Stable id for outputs |
+| `prometheus_resource_ids` | no | — | Comma/newline ids from Prometheus result labels |
 | `prometheus_queries_path` | no | — | YAML/JSON query list |
+| `include_resources` | no | — | Comma/newline globs for resource id, service, or resource kind to include |
+| `exclude_resources` | no | — | Comma/newline globs for resource id, service, or resource kind to exclude |
 | `min_confidence` | no | `0.75` | Minimum confidence for scale-down/up |
 | `low_confidence_policy` | no | `fail` | `fail` \| `warn` \| `request-review` \| `no-op` |
 | `allow_partial` | no | `false` | Allow scale decisions with partial metrics |
@@ -248,6 +256,11 @@ Full metadata: [`action.yml`](action.yml). Connectors: [`docs/connectors.md`](do
 | `partial_count` | Count of partial metric series |
 | `insufficient_count` | Count of weak/insufficient series |
 | `heuristic_recommendation` | Deterministic baseline before Jev |
+| `per_resource_recommendations` | JSON array with a deterministic recommendation, reasons, and exclusion flag per resource |
+| `threshold_profile` | Selected threshold preset used to resolve defaults |
+| `cost_hourly` | Aggregated hourly cost signal, if present |
+| `cost_monthly` | Aggregated monthly cost signal or a 730-hour projection |
+| `cost_impact` | JSON estimate using a 20% reduction/increase factor; `null` without cost or scale recommendation |
 | `decision_json_path` | Path written when requested, else empty |
 | `sarif_path` | Path written when requested, else empty |
 
@@ -340,14 +353,14 @@ See [`SECURITY.md`](SECURITY.md).
 ## Versioning
 
 ```yaml
-uses: JevForge/jev-resource-rightsizer@v0.1.1   # recommended pin
+uses: JevForge/jev-resource-rightsizer@v0.1.12   # recommended pin
 uses: JevForge/jev-resource-rightsizer@v0       # floating major (v0.x)
 ```
 
 ### Cutting a release (CI)
 
 1. Merge to `main` with `dist/` up to date (`npm run build`).
-2. Either **Actions → Release → Run workflow** on `main` (enter `0.1.2`), or push tag `v0.1.2`.
+2. Either **Actions → Release → Run workflow** on `main` (enter the next version), or push its `vX.Y.Z` tag.
 3. [`jev-release-forge`](https://github.com/JevForge/jev-release-forge) verifies the build, publishes the GitHub Release, and moves floating major `v0`.
 
 Marketplace listing updates still need one browser step (GitHub 2FA): edit the release and keep **Publish this Action to the GitHub Marketplace** checked.
@@ -364,6 +377,10 @@ npm run all   # typecheck + coverage + build
 ```
 
 Consumers run bundled `dist/index.js` (`runs.using: node24`) and do not need to install dependencies.
+
+The provider mock smoke check can be run locally with `npm run build` followed by
+`node scripts/smoke-e2e.mjs`; CI exposes the same check as a `workflow_dispatch`
+workflow.
 
 ## Contributing
 

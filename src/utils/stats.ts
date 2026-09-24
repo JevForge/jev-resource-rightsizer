@@ -44,3 +44,17 @@ export function summarizeValues(values: number[]): {
     sample_count: finite.length,
   };
 }
+
+export function summarizeTrend(values: number[]) {
+  if (values.length < 2) return { slope: 0, window_sample_count: values.length, direction: 'flat' as const };
+  const first = values[0]!;
+  const last = values[values.length - 1]!;
+  const slope = (last - first) / (values.length - 1);
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const threshold = Math.max(Math.abs(average) * 0.05, 0.01);
+  return {
+    slope,
+    window_sample_count: values.length,
+    direction: slope > threshold ? ('rising' as const) : slope < -threshold ? ('falling' as const) : ('flat' as const),
+  };
+}

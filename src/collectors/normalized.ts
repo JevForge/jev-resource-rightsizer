@@ -8,6 +8,7 @@ import {
 } from '../schemas/enums.js';
 import { makeResource } from './resource.js';
 import type { CollectResult } from './types.js';
+import { summarizeTrend } from '../utils/stats.js';
 
 const InputMetricSchema = z
   .object({
@@ -132,6 +133,7 @@ function toMetricDraft(
       sample_count: metric.sample_count ?? fromValues?.sample_count ?? (metric.avg != null ? minSampleCount : 0),
     },
     partial: metric.partial,
+    trend: metric.values?.length ? summarizeTrend(metric.values) : undefined,
     minSampleCount,
   };
 }

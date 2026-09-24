@@ -20,6 +20,7 @@ export const RightsizerConfigSchema = z
     min_confidence: z.number().min(0).max(1).optional(),
     low_confidence_policy: z.enum(LOW_CONFIDENCE_POLICIES).optional(),
     environment: z.enum(ENVIRONMENTS).optional(),
+    threshold_profile: z.enum(['conservative', 'balanced', 'aggressive']).optional(),
     window_start: z.string().optional(),
     window_end: z.string().optional(),
     thresholds: ThresholdsSchema.partial().optional(),
@@ -35,16 +36,24 @@ export const RightsizerConfigSchema = z
     sarif_path: z.string().optional(),
     cloudwatch_namespace: z.string().optional(),
     cloudwatch_metric_name: z.string().optional(),
+    cloudwatch_metric_names: z.string().optional(),
     cloudwatch_dimensions: z.string().optional(),
     cloudwatch_resource_id: z.string().optional(),
+    cloudwatch_resource_ids: z.string().optional(),
     azure_resource_id: z.string().optional(),
+    azure_resource_ids: z.string().optional(),
     azure_metric_names: z.string().optional(),
     gcp_project_id: z.string().optional(),
     gcp_metric_type: z.string().optional(),
+    gcp_metric_types: z.string().optional(),
     gcp_resource_id: z.string().optional(),
+    gcp_resource_ids: z.string().optional(),
     prometheus_url: z.string().optional(),
     prometheus_queries_path: z.string().optional(),
     prometheus_resource_id: z.string().optional(),
+    prometheus_resource_ids: z.string().optional(),
+    include_resources: z.array(z.string()).optional(),
+    exclude_resources: z.array(z.string()).optional(),
   })
   .strict();
 
@@ -98,6 +107,11 @@ export function splitList(value: string | undefined): string[] {
     .split(/[\n,]/)
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+export function pickList(input: string | undefined, config: string[] | undefined): string[] {
+  const fromInput = splitList(input);
+  return fromInput.length ? fromInput : config ?? [];
 }
 
 export function parseCloudWatchDimensions(raw: string | undefined): Array<{ Name: string; Value: string }> {

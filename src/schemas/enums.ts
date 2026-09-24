@@ -20,6 +20,9 @@ export const ENVIRONMENTS = [
 ] as const;
 export type EnvironmentName = (typeof ENVIRONMENTS)[number];
 
+export const THRESHOLD_PROFILES = ['conservative', 'balanced', 'aggressive'] as const;
+export type ThresholdProfile = (typeof THRESHOLD_PROFILES)[number];
+
 export const METRIC_KINDS = [
   'cpu',
   'memory',
@@ -43,6 +46,9 @@ export const METRIC_UNITS = [
   'other',
 ] as const;
 export type MetricUnit = (typeof METRIC_UNITS)[number];
+
+export const METRIC_NORMALIZATIONS = ['identity', 'ratio_to_percent'] as const;
+export type MetricNormalization = (typeof METRIC_NORMALIZATIONS)[number];
 
 export const METRIC_SOURCES = [
   'normalized',
@@ -97,5 +103,6 @@ export const REASON_CODES = [
   'TREND_RISING',
   'TREND_FALLING',
   'RIGHTSIZING_VISIBILITY_ENFORCED',
+  'RESOURCE_FILTERED',
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];

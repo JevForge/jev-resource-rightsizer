@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ResourceEvidence } from '../schemas/metrics.js';
+import type { PerResourceRecommendation } from '../schemas/decision.js';
 
 const SECRET_PATTERNS: RegExp[] = [
   /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/g,
@@ -63,6 +64,15 @@ export function redactResource(resource: ResourceEvidence): ResourceEvidence {
       id: `redacted:${shortHash(metric.id)}`,
       name: sanitizeLabel(metric.name, 80),
     })),
+  };
+}
+
+export function redactResourceRecommendation(
+  recommendation: PerResourceRecommendation,
+): PerResourceRecommendation {
+  return {
+    ...recommendation,
+    resource_id: `redacted:${shortHash(recommendation.resource_id)}`,
   };
 }
 
