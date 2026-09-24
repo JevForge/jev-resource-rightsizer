@@ -65898,6 +65898,7 @@ var METRIC_UNITS = [
   "ratio",
   "other"
 ];
+var METRIC_NORMALIZATIONS = ["identity", "ratio_to_percent"];
 var METRIC_SOURCES = [
   "normalized",
   "cloudwatch",
@@ -65968,6 +65969,8 @@ var MetricSeriesSchema = external_exports.object({
   kind: external_exports.enum(METRIC_KINDS),
   name: external_exports.string().min(1).max(128),
   unit: external_exports.enum(METRIC_UNITS),
+  source_unit: external_exports.enum(METRIC_UNITS).optional(),
+  normalization: external_exports.enum(METRIC_NORMALIZATIONS).optional(),
   source: external_exports.enum(METRIC_SOURCES),
   stats: MetricStatsSchema,
   partial: external_exports.boolean(),
@@ -66107,16 +66110,22 @@ var RightsizerConfigSchema = external_exports.object({
   sarif_path: external_exports.string().optional(),
   cloudwatch_namespace: external_exports.string().optional(),
   cloudwatch_metric_name: external_exports.string().optional(),
+  cloudwatch_metric_names: external_exports.string().optional(),
   cloudwatch_dimensions: external_exports.string().optional(),
   cloudwatch_resource_id: external_exports.string().optional(),
+  cloudwatch_resource_ids: external_exports.string().optional(),
   azure_resource_id: external_exports.string().optional(),
+  azure_resource_ids: external_exports.string().optional(),
   azure_metric_names: external_exports.string().optional(),
   gcp_project_id: external_exports.string().optional(),
   gcp_metric_type: external_exports.string().optional(),
+  gcp_metric_types: external_exports.string().optional(),
   gcp_resource_id: external_exports.string().optional(),
+  gcp_resource_ids: external_exports.string().optional(),
   prometheus_url: external_exports.string().optional(),
   prometheus_queries_path: external_exports.string().optional(),
   prometheus_resource_id: external_exports.string().optional(),
+  prometheus_resource_ids: external_exports.string().optional(),
   include_resources: external_exports.array(external_exports.string()).optional(),
   exclude_resources: external_exports.array(external_exports.string()).optional()
 }).strict();
@@ -66389,6 +66398,8 @@ function makeMetric(draft) {
     kind: draft.kind,
     name: draft.name,
     unit: draft.unit,
+    ...draft.source_unit ? { source_unit: draft.source_unit } : {},
+    ...draft.normalization ? { normalization: draft.normalization } : {},
     source: draft.source,
     stats: {
       avg: draft.stats.avg,
@@ -66636,63 +66647,106 @@ function summarizeValues2(values) {
   };
 }
 
-// src/collectors/cloudwatch.ts
-function kindFromMetric(name25) {
+// src/collectors/units.ts
+function isPercentageKind(kind) {
+  return kind === "cpu" || kind === "memory" || kind === "disk";
+}
+function inferMetricKind(name25) {
   const lower = name25.toLowerCase();
   if (lower.includes("cpu")) return "cpu";
-  if (lower.includes("mem")) return "memory";
+  if (lower.includes("mem") || lower.includes("ram")) return "memory";
   if (lower.includes("network") || lower.includes("bytes")) return "network";
   if (lower.includes("disk")) return "disk";
   if (lower.includes("request") || lower.includes("count")) return "requests";
+  if (lower.includes("cost") || lower.includes("price")) return "cost";
   return "custom";
 }
+function normalizeMetricValues(values, kind, nativeUnit) {
+  const lower = (nativeUnit ?? "").toLowerCase();
+  const ratio = lower === "1" || lower.includes("ratio") || lower.includes("dimensionless");
+  const bytes = lower.includes("byte") || lower.includes("octet");
+  if (ratio && isPercentageKind(kind)) {
+    return {
+      values: values.map((value) => Math.abs(value) <= 1 ? value * 100 : value),
+      unit: "percent",
+      source_unit: "ratio",
+      normalization: "ratio_to_percent"
+    };
+  }
+  if (bytes) {
+    return { values, unit: "bytes", source_unit: "bytes", normalization: "identity" };
+  }
+  if (isPercentageKind(kind)) {
+    return { values, unit: "percent", source_unit: "percent", normalization: "identity" };
+  }
+  if (kind === "requests") {
+    return { values, unit: "requests_per_sec", source_unit: "requests_per_sec", normalization: "identity" };
+  }
+  return { values, unit: bytes ? "bytes" : "other", source_unit: bytes ? "bytes" : "other", normalization: "identity" };
+}
+
+// src/collectors/cloudwatch.ts
 async function collectCloudWatch(options) {
-  const response = await options.client.getMetricStatistics({
-    namespace: options.namespace,
-    metricName: options.metricName,
-    dimensions: options.dimensions,
-    startTime: new Date(options.window.start),
-    endTime: new Date(options.window.end),
-    period: options.periodSeconds ?? 300,
-    statistics: ["Average", "Maximum", "Minimum", "SampleCount"]
-  });
-  const averages = (response.Datapoints ?? []).map((point) => point.Average).filter((value) => value != null && Number.isFinite(value));
-  const stats = summarizeValues2(averages);
-  const max = Math.max(
-    ...(response.Datapoints ?? []).map((point) => point.Maximum).filter((value) => value != null),
-    Number.NEGATIVE_INFINITY
-  );
-  const min = Math.min(
-    ...(response.Datapoints ?? []).map((point) => point.Minimum).filter((value) => value != null),
-    Number.POSITIVE_INFINITY
-  );
-  const kind = kindFromMetric(options.metricName);
-  const resource = makeResource({
-    resource_id: options.resourceId,
-    service: options.service,
-    resource_kind: "compute",
-    environment: options.environment,
-    metrics: [
-      {
+  const metrics = options.metrics?.length ? options.metrics : options.metricName ? [{ metricName: options.metricName }] : [];
+  const resources = options.resources?.length ? options.resources : options.resourceId ? [{ resourceId: options.resourceId, dimensions: options.dimensions, service: options.service }] : [];
+  if (!metrics.length || !resources.length) {
+    throw new Error(actionError("CloudWatch batch requires at least one metric and one resource."));
+  }
+  const warnings = [];
+  const output = [];
+  for (const target of resources) {
+    const metricDrafts = [];
+    for (const query of metrics) {
+      let response;
+      try {
+        response = await options.client.getMetricStatistics({
+          namespace: options.namespace,
+          metricName: query.metricName,
+          dimensions: target.dimensions ?? options.dimensions ?? [],
+          startTime: new Date(options.window.start),
+          endTime: new Date(options.window.end),
+          period: options.periodSeconds ?? 300,
+          statistics: ["Average", "Maximum", "Minimum", "SampleCount"]
+        });
+      } catch (error2) {
+        throw new Error(actionError(`CloudWatch request failed for ${query.metricName}: ${safeError(error2)}`));
+      }
+      const kind = query.kind ?? inferMetricKind(query.metricName);
+      const points = response.Datapoints ?? [];
+      const nativeUnit = query.unit ?? points.find((point) => point.Unit)?.Unit;
+      const averages = points.map((point) => point.Average).filter((value) => value != null && Number.isFinite(value));
+      const normalized = query.unit ? { values: averages, unit: query.unit, source_unit: query.unit, normalization: "identity" } : normalizeMetricValues(averages, kind, nativeUnit);
+      const stats = summarizeValues2(normalized.values);
+      const maximums = points.map((point) => point.Maximum).filter((value) => value != null && Number.isFinite(value));
+      const minimums = points.map((point) => point.Minimum).filter((value) => value != null && Number.isFinite(value));
+      const normalizedMaximum = query.unit ? maximums : normalizeMetricValues(maximums, kind, nativeUnit).values;
+      const normalizedMinimum = query.unit ? minimums : normalizeMetricValues(minimums, kind, nativeUnit).values;
+      const max = Math.max(...normalizedMaximum, Number.NEGATIVE_INFINITY);
+      const min = Math.min(...normalizedMinimum, Number.POSITIVE_INFINITY);
+      if (!stats.sample_count) warnings.push(`CloudWatch returned no datapoints for ${target.resourceId}/${query.metricName}.`);
+      metricDrafts.push({
         kind,
-        name: options.metricName,
-        unit: kind === "cpu" || kind === "memory" || kind === "disk" ? "percent" : "other",
+        name: query.name ?? query.metricName,
+        unit: normalized.unit,
+        source_unit: normalized.source_unit,
+        normalization: normalized.normalization,
         source: "cloudwatch",
-        stats: {
-          ...stats,
-          max: Number.isFinite(max) ? max : stats.max,
-          min: Number.isFinite(min) ? min : stats.min
-        },
+        stats: { ...stats, max: Number.isFinite(max) ? max : stats.max, min: Number.isFinite(min) ? min : stats.min },
         minSampleCount: options.minSampleCount,
         partial: stats.sample_count === 0
-      }
-    ]
-  });
-  return {
-    resources: [resource],
-    warnings: stats.sample_count === 0 ? ["CloudWatch returned no datapoints for the observation window."] : [],
-    sources: ["cloudwatch"]
-  };
+      });
+    }
+    output.push(
+      makeResource({
+        resource_id: target.resourceId,
+        service: target.service ?? options.service ?? "aws",
+        resource_kind: target.resourceKind ?? "compute",
+        environment: options.environment,
+        metrics: metricDrafts
+      })
+    );
+  }
+  return { resources: output, warnings, sources: ["cloudwatch"] };
 }
 async function createDefaultCloudWatchClient(region) {
   const { CloudWatchClient, GetMetricStatisticsCommand } = await Promise.resolve().then(() => __toESM(require_dist_cjs17(), 1));
@@ -66735,72 +66789,90 @@ async function withRetry(operation2, options) {
 }
 
 // src/collectors/azure-monitor.ts
-function kindFromMetric2(name25) {
-  const lower = name25.toLowerCase();
-  if (lower.includes("cpu") || lower.includes("percentage cpu")) return "cpu";
-  if (lower.includes("mem")) return "memory";
-  if (lower.includes("network")) return "network";
-  if (lower.includes("disk")) return "disk";
-  if (lower.includes("request")) return "requests";
-  return "custom";
-}
 async function collectAzureMonitor(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const metricNames = options.metricNames.join(",");
-  const url = `https://management.azure.com${options.resourceId}/providers/microsoft.insights/metrics?api-version=2023-10-01&timespan=${encodeURIComponent(`${options.window.start}/${options.window.end}`)}&interval=PT5M&aggregation=Average,Maximum,Minimum&metricnames=${encodeURIComponent(metricNames)}`;
-  const body = await withRetry(
-    async () => {
-      const response = await fetchImpl(url, {
-        headers: { authorization: `Bearer ${options.accessToken}` },
-        signal: AbortSignal.timeout(options.timeoutMs)
-      });
-      if (!response.ok) {
-        throw new Error(
-          actionError(
-            `Azure Monitor HTTP ${response.status}. Verify the resource id and that the identity has Monitoring Reader.`
-          )
-        );
+  const resourceIds = options.resourceIds?.length ? options.resourceIds : options.resourceId ? [options.resourceId] : [];
+  if (!resourceIds.length) throw new Error(actionError("Azure Monitor batch requires at least one resource."));
+  const metricNames = options.metricNames.length ? options.metricNames : ["Percentage CPU"];
+  const warnings = [];
+  const resources = [];
+  for (const resourceId of resourceIds) {
+    const metricsByName = /* @__PURE__ */ new Map();
+    let nextUrl = `https://management.azure.com${resourceId}/providers/microsoft.insights/metrics?api-version=2023-10-01&timespan=${encodeURIComponent(`${options.window.start}/${options.window.end}`)}&interval=PT5M&aggregation=Average,Maximum,Minimum&metricnames=${encodeURIComponent(metricNames.join(","))}`;
+    do {
+      const body = await withRetry(
+        async () => {
+          let response;
+          try {
+            response = await fetchImpl(nextUrl, {
+              headers: { authorization: `Bearer ${options.accessToken}` },
+              signal: AbortSignal.timeout(options.timeoutMs)
+            });
+          } catch (error2) {
+            throw new Error(actionError(`Azure Monitor request failed: ${safeError(error2)}`));
+          }
+          if (!response.ok) {
+            throw new Error(
+              actionError(
+                `Azure Monitor HTTP ${response.status}. Verify the resource id and that the identity has Monitoring Reader.`
+              )
+            );
+          }
+          return await response.json();
+        },
+        { label: "Azure Monitor", attempts: 2 }
+      );
+      for (const metric of body.value ?? []) {
+        const name25 = metric.name?.value ?? "metric";
+        const entry = metricsByName.get(name25) ?? { unit: metric.unit, points: [] };
+        entry.unit ??= metric.unit;
+        entry.points.push(...(metric.timeseries ?? []).flatMap((series) => series.data ?? []));
+        metricsByName.set(name25, entry);
       }
-      return await response.json();
-    },
-    { label: "Azure Monitor", attempts: 2 }
-  );
-  const metrics = (body.value ?? []).map((metric) => {
-    const points = (metric.timeseries ?? []).flatMap((series) => series.data ?? []);
-    const averages = points.map((point) => point.average).filter((value) => value != null && Number.isFinite(value));
-    const stats = summarizeValues2(averages);
-    const name25 = metric.name?.value ?? "metric";
-    const kind = kindFromMetric2(name25);
-    return {
-      kind,
-      name: name25,
-      unit: kind === "cpu" || kind === "memory" || kind === "disk" ? "percent" : "other",
-      source: "azure-monitor",
-      stats,
-      minSampleCount: options.minSampleCount,
-      partial: stats.sample_count === 0
-    };
-  });
-  if (!metrics.length) {
-    return {
-      resources: [],
-      warnings: ["Azure Monitor returned no metrics for the selected resource."],
-      sources: ["azure-monitor"]
-    };
+      nextUrl = body.nextLink;
+    } while (nextUrl);
+    const metrics = [...metricsByName.entries()].map(([name25, entry]) => {
+      const kind = inferMetricKind(name25);
+      const nativeUnit = entry.unit ?? (name25.toLowerCase().includes("byte") ? "bytes" : void 0);
+      const averages = entry.points.map((point) => point.average).filter((value) => value != null && Number.isFinite(value));
+      const normalized = normalizeMetricValues(averages, kind, nativeUnit);
+      const stats = summarizeValues2(normalized.values);
+      const maximums = entry.points.map((point) => point.maximum).filter((value) => value != null && Number.isFinite(value));
+      const minimums = entry.points.map((point) => point.minimum).filter((value) => value != null && Number.isFinite(value));
+      const max = normalizeMetricValues(maximums, kind, nativeUnit).values;
+      const min = normalizeMetricValues(minimums, kind, nativeUnit).values;
+      if (!stats.sample_count) warnings.push(`Azure Monitor returned no samples for ${resourceId}/${name25}.`);
+      return {
+        kind,
+        name: name25,
+        unit: normalized.unit,
+        source_unit: normalized.source_unit,
+        normalization: normalized.normalization,
+        source: "azure-monitor",
+        stats: {
+          ...stats,
+          max: max.length ? Math.max(...max) : stats.max,
+          min: min.length ? Math.min(...min) : stats.min
+        },
+        minSampleCount: options.minSampleCount,
+        partial: stats.sample_count === 0
+      };
+    });
+    if (metrics.length) {
+      resources.push(
+        makeResource({
+          resource_id: resourceId,
+          service: options.service ?? "azure",
+          resource_kind: "compute",
+          environment: options.environment,
+          metrics
+        })
+      );
+    } else {
+      warnings.push(`Azure Monitor returned no metrics for ${resourceId}.`);
+    }
   }
-  return {
-    resources: [
-      makeResource({
-        resource_id: options.resourceId,
-        service: options.service ?? "azure",
-        resource_kind: "compute",
-        environment: options.environment,
-        metrics
-      })
-    ],
-    warnings: metrics.every((metric) => metric.partial) ? ["Azure Monitor returned empty timeseries for the observation window."] : [],
-    sources: ["azure-monitor"]
-  };
+  return { resources, warnings, sources: ["azure-monitor"] };
 }
 async function acquireAzureToken(credentials) {
   const fetchImpl = credentials.fetchImpl ?? fetch;
@@ -66832,15 +66904,6 @@ async function acquireAzureToken(credentials) {
 }
 
 // src/collectors/gcp-monitoring.ts
-function kindFromMetric3(type) {
-  const lower = type.toLowerCase();
-  if (lower.includes("cpu")) return "cpu";
-  if (lower.includes("memory") || lower.includes("ram")) return "memory";
-  if (lower.includes("network")) return "network";
-  if (lower.includes("disk")) return "disk";
-  if (lower.includes("request")) return "requests";
-  return "custom";
-}
 function pointValue(point) {
   if (point.value?.doubleValue != null) return point.value.doubleValue;
   if (point.value?.int64Value != null) {
@@ -66851,66 +66914,107 @@ function pointValue(point) {
 }
 async function collectGcpMonitoring(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const filter2 = encodeURIComponent(
-    `metric.type="${options.metricType}" AND resource.labels.instance_id="${options.resourceId}"`
-  );
-  const url = `https://monitoring.googleapis.com/v3/projects/${options.projectId}/timeSeries?filter=${filter2}&interval.startTime=${encodeURIComponent(options.window.start)}&interval.endTime=${encodeURIComponent(options.window.end)}&aggregation.alignmentPeriod=300s&aggregation.perSeriesAligner=ALIGN_MEAN`;
-  const body = await withRetry(
-    async () => {
-      const response = await fetchImpl(url, {
-        headers: { authorization: `Bearer ${options.accessToken}` },
-        signal: AbortSignal.timeout(options.timeoutMs)
-      });
-      if (!response.ok) {
-        throw new Error(
-          actionError(
-            `GCP Monitoring HTTP ${response.status}. Verify GCP_ACCESS_TOKEN scopes and project/metric/resource ids.`
-          )
+  const resourceIds = options.resourceIds?.length ? options.resourceIds : options.resourceId ? [options.resourceId] : [];
+  const metricTypes = options.metricTypes?.length ? options.metricTypes : options.metricType ? [options.metricType] : [];
+  if (!resourceIds.length || !metricTypes.length) {
+    throw new Error(actionError("GCP Monitoring batch requires at least one metric type and one resource."));
+  }
+  const valuesByResource = /* @__PURE__ */ new Map();
+  const warnings = [];
+  for (const resourceId of resourceIds) {
+    for (const metricType of metricTypes) {
+      const values = [];
+      let nativeUnit;
+      let pageToken;
+      do {
+        const params = new URLSearchParams({
+          filter: `metric.type="${metricType}" AND resource.labels.instance_id="${resourceId}"`,
+          "interval.startTime": options.window.start,
+          "interval.endTime": options.window.end,
+          "aggregation.alignmentPeriod": "300s",
+          "aggregation.perSeriesAligner": "ALIGN_MEAN",
+          view: "FULL"
+        });
+        if (pageToken) params.set("pageToken", pageToken);
+        const url = `https://monitoring.googleapis.com/v3/projects/${options.projectId}/timeSeries?${params.toString()}`;
+        const body = await withRetry(
+          async () => {
+            let response;
+            try {
+              response = await fetchImpl(url, {
+                headers: { authorization: `Bearer ${options.accessToken}` },
+                signal: AbortSignal.timeout(options.timeoutMs)
+              });
+            } catch (error2) {
+              throw new Error(actionError(`GCP Monitoring request failed: ${safeError(error2)}`));
+            }
+            if (!response.ok) {
+              throw new Error(
+                actionError(
+                  `GCP Monitoring HTTP ${response.status}. Verify GCP_ACCESS_TOKEN scopes and project/metric/resource ids.`
+                )
+              );
+            }
+            return await response.json();
+          },
+          { label: "GCP Monitoring", attempts: 2 }
         );
-      }
-      return await response.json();
-    },
-    { label: "GCP Monitoring", attempts: 2 }
-  );
-  const values = (body.timeSeries ?? []).flatMap((series) => series.points ?? []).map(pointValue).filter((value) => value != null);
-  const stats = summarizeValues2(values);
-  const kind = kindFromMetric3(options.metricType);
-  return {
-    resources: [
-      makeResource({
-        resource_id: options.resourceId,
-        service: options.service ?? "gcp",
-        resource_kind: "compute",
-        environment: options.environment,
-        metrics: [
-          {
-            kind,
-            name: options.metricType,
-            unit: kind === "cpu" || kind === "memory" || kind === "disk" ? "percent" : "other",
-            source: "gcp-monitoring",
-            stats,
-            minSampleCount: options.minSampleCount,
-            partial: stats.sample_count === 0
-          }
-        ]
-      })
-    ],
-    warnings: stats.sample_count === 0 ? ["GCP Monitoring returned no points for the observation window."] : [],
-    sources: ["gcp-monitoring"]
-  };
+        nativeUnit = body.unit ?? body.timeSeries?.find((series) => series.unit)?.unit ?? nativeUnit;
+        values.push(
+          ...(body.timeSeries ?? []).flatMap((series) => series.points ?? []).map(pointValue).filter((value) => value != null)
+        );
+        pageToken = body.nextPageToken;
+      } while (pageToken);
+      const perMetric = valuesByResource.get(resourceId) ?? /* @__PURE__ */ new Map();
+      perMetric.set(metricType, { values, unit: nativeUnit });
+      valuesByResource.set(resourceId, perMetric);
+    }
+  }
+  const resources = resourceIds.map((resourceId) => {
+    const metricDrafts = metricTypes.map((metricType) => {
+      const entry = valuesByResource.get(resourceId)?.get(metricType) ?? { values: [] };
+      const kind = inferMetricKind(metricType);
+      const lowerMetricType = metricType.toLowerCase();
+      const inferredUnit = lowerMetricType.includes("byte") ? "bytes" : lowerMetricType.includes("utilization") && kind !== "custom" ? "1" : void 0;
+      const normalized = normalizeMetricValues(entry.values, kind, entry.unit ?? inferredUnit);
+      const stats = summarizeValues2(normalized.values);
+      if (!stats.sample_count) warnings.push(`GCP Monitoring returned no points for ${resourceId}/${metricType}.`);
+      return {
+        kind,
+        name: metricType,
+        unit: normalized.unit,
+        source_unit: normalized.source_unit,
+        normalization: normalized.normalization,
+        source: "gcp-monitoring",
+        stats,
+        minSampleCount: options.minSampleCount,
+        partial: stats.sample_count === 0
+      };
+    });
+    return makeResource({
+      resource_id: resourceId,
+      service: options.service ?? "gcp",
+      resource_kind: "compute",
+      environment: options.environment,
+      metrics: metricDrafts
+    });
+  });
+  return { resources, warnings, sources: ["gcp-monitoring"] };
 }
 
 // src/collectors/prometheus.ts
-function parseValues(response) {
-  const values = [];
+function parseValuesByResource(response, fallbackResourceId, resourceLabel) {
+  const valuesByResource = /* @__PURE__ */ new Map();
   for (const series of response.data?.result ?? []) {
+    const resourceId = series.metric?.[resourceLabel] ?? series.metric?.resource_id ?? series.metric?.resource ?? fallbackResourceId;
+    const values = valuesByResource.get(resourceId) ?? [];
     for (const point of series.values ?? []) {
-      const raw = point[1];
-      const parsed = Number(raw);
+      const parsed = Number(point[1]);
       if (Number.isFinite(parsed)) values.push(parsed);
     }
+    valuesByResource.set(resourceId, values);
   }
-  return values;
+  return valuesByResource;
 }
 async function collectPrometheus(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -66920,7 +67024,10 @@ async function collectPrometheus(options) {
       actionError("prometheus_url must be HTTPS (or localhost / 127.0.0.1 for local development)")
     );
   }
-  const metrics = [];
+  const resourceIds = options.resourceIds?.length ? options.resourceIds : options.resourceId ? [options.resourceId] : [];
+  if (!resourceIds.length) throw new Error(actionError("Prometheus batch requires at least one resource."));
+  const metricsByResource = /* @__PURE__ */ new Map();
+  for (const resourceId of resourceIds) metricsByResource.set(resourceId, []);
   const warnings = [];
   for (const query of options.queries) {
     const url = new URL(`${base}/api/v1/query_range`);
@@ -66932,10 +67039,15 @@ async function collectPrometheus(options) {
       async () => {
         const headers = {};
         if (options.bearerToken) headers.authorization = `Bearer ${options.bearerToken}`;
-        const response = await fetchImpl(url.toString(), {
-          headers,
-          signal: AbortSignal.timeout(options.timeoutMs)
-        });
+        let response;
+        try {
+          response = await fetchImpl(url.toString(), {
+            headers,
+            signal: AbortSignal.timeout(options.timeoutMs)
+          });
+        } catch (error2) {
+          throw new Error(actionError(`Prometheus request failed for ${query.name}: ${safeError(error2)}`));
+        }
         if (!response.ok) {
           throw new Error(
             actionError(`Prometheus HTTP ${response.status}. Verify prometheus_url, query, and bearer token.`)
@@ -66945,30 +67057,32 @@ async function collectPrometheus(options) {
       },
       { label: `Prometheus ${query.name}`, attempts: 2 }
     );
-    const stats = summarizeValues2(parseValues(body));
-    if (stats.sample_count === 0) {
-      warnings.push(`Prometheus query "${query.name}" returned no samples.`);
+    const valuesByResource = parseValuesByResource(body, resourceIds[0], query.resourceLabel ?? "resource");
+    for (const resourceId of resourceIds) {
+      const normalized = normalizeMetricValues(valuesByResource.get(resourceId) ?? [], query.kind, query.unit);
+      const stats = summarizeValues2(normalized.values);
+      if (stats.sample_count === 0) warnings.push(`Prometheus query "${query.name}" returned no samples for ${resourceId}.`);
+      metricsByResource.get(resourceId)?.push({
+        kind: query.kind,
+        name: query.name,
+        unit: normalized.unit,
+        source_unit: normalized.source_unit,
+        normalization: normalized.normalization,
+        source: "prometheus",
+        stats,
+        minSampleCount: options.minSampleCount,
+        partial: stats.sample_count === 0
+      });
     }
-    metrics.push({
-      kind: query.kind,
-      name: query.name,
-      unit: query.unit ?? (query.kind === "cpu" || query.kind === "memory" || query.kind === "disk" ? "percent" : query.kind === "requests" ? "requests_per_sec" : "other"),
-      source: "prometheus",
-      stats,
-      minSampleCount: options.minSampleCount,
-      partial: stats.sample_count === 0
-    });
   }
   return {
-    resources: [
-      makeResource({
-        resource_id: options.resourceId,
-        service: options.service ?? "prometheus",
-        resource_kind: "container",
-        environment: options.environment,
-        metrics
-      })
-    ],
+    resources: resourceIds.map((resourceId) => makeResource({
+      resource_id: resourceId,
+      service: options.service ?? "prometheus",
+      resource_kind: "container",
+      environment: options.environment,
+      metrics: metricsByResource.get(resourceId) ?? []
+    })),
     warnings,
     sources: ["prometheus"]
   };
@@ -66990,7 +67104,8 @@ var PrometheusQueriesSchema = external_exports.array(
       "usd_per_month",
       "ratio",
       "other"
-    ]).optional()
+    ]).optional(),
+    resourceLabel: external_exports.string().min(1).max(64).optional()
   }).strict()
 );
 async function loadMetricsReport(input) {
@@ -67013,10 +67128,12 @@ async function loadMetricsReport(input) {
     );
   }
   if (input.cloudwatch?.enabled) {
-    if (!input.cloudwatch.namespace || !input.cloudwatch.metricName || !input.cloudwatch.resourceId) {
+    const metricNames = input.cloudwatch.metricNames?.length ? input.cloudwatch.metricNames : input.cloudwatch.metricName ? [input.cloudwatch.metricName] : [];
+    const resourceIds = input.cloudwatch.resourceIds?.length ? input.cloudwatch.resourceIds : input.cloudwatch.resourceId ? [input.cloudwatch.resourceId] : [];
+    if (!input.cloudwatch.namespace || !metricNames.length || !resourceIds.length) {
       throw new Error(
         actionError(
-          "cloudwatch_enabled requires cloudwatch_namespace, cloudwatch_metric_name, and cloudwatch_resource_id"
+          "cloudwatch_enabled requires cloudwatch_namespace, at least one metric name, and at least one resource id"
         )
       );
     }
@@ -67027,8 +67144,10 @@ async function loadMetricsReport(input) {
         window: input.window,
         namespace: input.cloudwatch.namespace,
         metricName: input.cloudwatch.metricName,
+        metrics: metricNames.map((metricName) => ({ metricName })),
         dimensions: parseCloudWatchDimensions(input.cloudwatch.dimensionsRaw),
         resourceId: input.cloudwatch.resourceId,
+        resources: resourceIds.map((resourceId) => ({ resourceId })),
         service: input.cloudwatch.service ?? "aws",
         client,
         minSampleCount: input.thresholds.min_sample_count
@@ -67036,7 +67155,8 @@ async function loadMetricsReport(input) {
     );
   }
   if (input.azure?.enabled) {
-    if (!input.azure.resourceId) throw new Error(actionError("azure_enabled requires azure_resource_id"));
+    const resourceIds = input.azure.resourceIds?.length ? input.azure.resourceIds : input.azure.resourceId ? [input.azure.resourceId] : [];
+    if (!resourceIds.length) throw new Error(actionError("azure_enabled requires azure_resource_id or azure_resource_ids"));
     const token = input.azure.accessToken ?? (input.azure.credentials ? await acquireAzureToken({
       ...input.azure.credentials,
       timeoutMs: input.azure.timeoutMs,
@@ -67053,6 +67173,7 @@ async function loadMetricsReport(input) {
         window: input.window,
         subscriptionId: input.azure.credentials?.subscriptionId ?? "",
         resourceId: input.azure.resourceId,
+        resourceIds,
         metricNames: input.azure.metricNames?.length ? input.azure.metricNames : ["Percentage CPU"],
         accessToken: token,
         service: input.azure.service,
@@ -67063,9 +67184,11 @@ async function loadMetricsReport(input) {
     );
   }
   if (input.gcp?.enabled) {
-    if (!input.gcp.projectId || !input.gcp.metricType || !input.gcp.resourceId) {
+    const metricTypes = input.gcp.metricTypes?.length ? input.gcp.metricTypes : input.gcp.metricType ? [input.gcp.metricType] : [];
+    const resourceIds = input.gcp.resourceIds?.length ? input.gcp.resourceIds : input.gcp.resourceId ? [input.gcp.resourceId] : [];
+    if (!input.gcp.projectId || !metricTypes.length || !resourceIds.length) {
       throw new Error(
-        actionError("gcp_enabled requires gcp_project_id, gcp_metric_type, and gcp_resource_id")
+        actionError("gcp_enabled requires gcp_project_id, at least one metric type, and at least one resource id")
       );
     }
     if (!input.gcp.accessToken) {
@@ -67078,6 +67201,8 @@ async function loadMetricsReport(input) {
         projectId: input.gcp.projectId,
         resourceId: input.gcp.resourceId,
         metricType: input.gcp.metricType,
+        resourceIds,
+        metricTypes,
         accessToken: input.gcp.accessToken,
         service: input.gcp.service,
         timeoutMs: input.gcp.timeoutMs,
@@ -67087,9 +67212,10 @@ async function loadMetricsReport(input) {
     );
   }
   if (input.prometheus?.enabled) {
-    if (!input.prometheus.baseUrl || !input.prometheus.resourceId) {
+    const resourceIds = input.prometheus.resourceIds?.length ? input.prometheus.resourceIds : input.prometheus.resourceId ? [input.prometheus.resourceId] : [];
+    if (!input.prometheus.baseUrl || !resourceIds.length) {
       throw new Error(
-        actionError("prometheus_enabled requires prometheus_url and prometheus_resource_id")
+        actionError("prometheus_enabled requires prometheus_url and at least one prometheus resource id")
       );
     }
     let queries = input.prometheus.queries ?? [];
@@ -67108,6 +67234,7 @@ async function loadMetricsReport(input) {
         window: input.window,
         baseUrl: input.prometheus.baseUrl,
         resourceId: input.prometheus.resourceId,
+        resourceIds,
         service: input.prometheus.service,
         queries,
         bearerToken: input.prometheus.bearerToken,
@@ -82644,13 +82771,16 @@ async function main() {
       enabled: cloudwatchEnabled,
       namespace: pickString(core.getInput("cloudwatch_namespace"), config2.cloudwatch_namespace),
       metricName: pickString(core.getInput("cloudwatch_metric_name"), config2.cloudwatch_metric_name),
+      metricNames: splitList(pickString(core.getInput("cloudwatch_metric_names"), config2.cloudwatch_metric_names)),
       dimensionsRaw: pickString(core.getInput("cloudwatch_dimensions"), config2.cloudwatch_dimensions),
       resourceId: pickString(core.getInput("cloudwatch_resource_id"), config2.cloudwatch_resource_id),
+      resourceIds: splitList(pickString(core.getInput("cloudwatch_resource_ids"), config2.cloudwatch_resource_ids)),
       service: pickString(core.getInput("cloudwatch_service"), void 0, "aws")
     },
     azure: {
       enabled: azureEnabled,
       resourceId: pickString(core.getInput("azure_resource_id"), config2.azure_resource_id),
+      resourceIds: splitList(pickString(core.getInput("azure_resource_ids"), config2.azure_resource_ids)),
       metricNames: (() => {
         const fromInput = splitList(core.getInput("azure_metric_names"));
         if (fromInput.length) return fromInput;
@@ -82668,7 +82798,9 @@ async function main() {
       enabled: gcpEnabled,
       projectId: pickString(core.getInput("gcp_project_id"), config2.gcp_project_id ?? env2("GCP_PROJECT_ID")),
       metricType: pickString(core.getInput("gcp_metric_type"), config2.gcp_metric_type),
+      metricTypes: splitList(pickString(core.getInput("gcp_metric_types"), config2.gcp_metric_types)),
       resourceId: pickString(core.getInput("gcp_resource_id"), config2.gcp_resource_id),
+      resourceIds: splitList(pickString(core.getInput("gcp_resource_ids"), config2.gcp_resource_ids)),
       timeoutMs: pickNumber(core.getInput("connector_timeout_ms"), void 0, 2e4),
       accessToken: env2("GCP_ACCESS_TOKEN")
     },
@@ -82676,6 +82808,7 @@ async function main() {
       enabled: prometheusEnabled,
       baseUrl: pickString(core.getInput("prometheus_url"), config2.prometheus_url ?? env2("PROMETHEUS_URL")),
       resourceId: pickString(core.getInput("prometheus_resource_id"), config2.prometheus_resource_id),
+      resourceIds: splitList(pickString(core.getInput("prometheus_resource_ids"), config2.prometheus_resource_ids)),
       queriesPath: pickString(core.getInput("prometheus_queries_path"), config2.prometheus_queries_path),
       bearerToken: env2("PROMETHEUS_BEARER_TOKEN"),
       timeoutMs: pickNumber(core.getInput("connector_timeout_ms"), void 0, 2e4)

@@ -44,6 +44,9 @@ export const METRIC_UNITS = [
 ] as const;
 export type MetricUnit = (typeof METRIC_UNITS)[number];
 
+export const METRIC_NORMALIZATIONS = ['identity', 'ratio_to_percent'] as const;
+export type MetricNormalization = (typeof METRIC_NORMALIZATIONS)[number];
+
 export const METRIC_SOURCES = [
   'normalized',
   'cloudwatch',

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## 0.1.7 — 2026-09-24
+
+### Added
+
+* Expand CloudWatch, Azure Monitor, GCP Monitoring, and Prometheus connectors to a batch-of-metrics-per-resource contract.
+* Normalize provider units explicitly, including GCP ratios to percent and byte-valued memory metrics.
+* Follow Azure/GCP pagination and retain provider failures as prefixed, actionable errors.
+
 ## 0.1.6 — 2026-09-24
 
 ### Added

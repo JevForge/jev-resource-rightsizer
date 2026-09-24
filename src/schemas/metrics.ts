@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ENVIRONMENTS,
   METRIC_KINDS,
+  METRIC_NORMALIZATIONS,
   METRIC_SOURCES,
   METRIC_UNITS,
   RESOURCE_KINDS,
@@ -39,6 +40,8 @@ export const MetricSeriesSchema = z
     kind: z.enum(METRIC_KINDS),
     name: z.string().min(1).max(128),
     unit: z.enum(METRIC_UNITS),
+    source_unit: z.enum(METRIC_UNITS).optional(),
+    normalization: z.enum(METRIC_NORMALIZATIONS).optional(),
     source: z.enum(METRIC_SOURCES),
     stats: MetricStatsSchema,
     partial: z.boolean(),

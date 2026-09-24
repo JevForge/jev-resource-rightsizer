@@ -97,13 +97,16 @@ async function main(): Promise<void> {
       enabled: cloudwatchEnabled,
       namespace: pickString(core.getInput('cloudwatch_namespace'), config.cloudwatch_namespace),
       metricName: pickString(core.getInput('cloudwatch_metric_name'), config.cloudwatch_metric_name),
+      metricNames: splitList(pickString(core.getInput('cloudwatch_metric_names'), config.cloudwatch_metric_names)),
       dimensionsRaw: pickString(core.getInput('cloudwatch_dimensions'), config.cloudwatch_dimensions),
       resourceId: pickString(core.getInput('cloudwatch_resource_id'), config.cloudwatch_resource_id),
+      resourceIds: splitList(pickString(core.getInput('cloudwatch_resource_ids'), config.cloudwatch_resource_ids)),
       service: pickString(core.getInput('cloudwatch_service'), undefined, 'aws'),
     },
     azure: {
       enabled: azureEnabled,
       resourceId: pickString(core.getInput('azure_resource_id'), config.azure_resource_id),
+      resourceIds: splitList(pickString(core.getInput('azure_resource_ids'), config.azure_resource_ids)),
       metricNames: (() => {
         const fromInput = splitList(core.getInput('azure_metric_names'));
         if (fromInput.length) return fromInput;
@@ -123,7 +126,9 @@ async function main(): Promise<void> {
       enabled: gcpEnabled,
       projectId: pickString(core.getInput('gcp_project_id'), config.gcp_project_id ?? env('GCP_PROJECT_ID')),
       metricType: pickString(core.getInput('gcp_metric_type'), config.gcp_metric_type),
+      metricTypes: splitList(pickString(core.getInput('gcp_metric_types'), config.gcp_metric_types)),
       resourceId: pickString(core.getInput('gcp_resource_id'), config.gcp_resource_id),
+      resourceIds: splitList(pickString(core.getInput('gcp_resource_ids'), config.gcp_resource_ids)),
       timeoutMs: pickNumber(core.getInput('connector_timeout_ms'), undefined, 20_000),
       accessToken: env('GCP_ACCESS_TOKEN'),
     },
@@ -131,6 +136,7 @@ async function main(): Promise<void> {
       enabled: prometheusEnabled,
       baseUrl: pickString(core.getInput('prometheus_url'), config.prometheus_url ?? env('PROMETHEUS_URL')),
       resourceId: pickString(core.getInput('prometheus_resource_id'), config.prometheus_resource_id),
+      resourceIds: splitList(pickString(core.getInput('prometheus_resource_ids'), config.prometheus_resource_ids)),
       queriesPath: pickString(core.getInput('prometheus_queries_path'), config.prometheus_queries_path),
       bearerToken: env('PROMETHEUS_BEARER_TOKEN'),
       timeoutMs: pickNumber(core.getInput('connector_timeout_ms'), undefined, 20_000),

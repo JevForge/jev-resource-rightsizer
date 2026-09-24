@@ -56,11 +56,17 @@ inputs:
   cloudwatch_metric_name:
     description: CloudWatch metric name (example CPUUtilization).
     required: false
+  cloudwatch_metric_names:
+    description: Comma/newline CloudWatch metric names for batch collection.
+    required: false
   cloudwatch_dimensions:
     description: CloudWatch dimensions as Name=Value pairs or JSON array.
     required: false
   cloudwatch_resource_id:
     description: Stable resource id used in outputs for the CloudWatch series.
+    required: false
+  cloudwatch_resource_ids:
+    description: Comma/newline stable resource ids for CloudWatch batch collection.
     required: false
   cloudwatch_service:
     description: Service label for the CloudWatch resource.
@@ -72,6 +78,9 @@ inputs:
     default: 'false'
   azure_resource_id:
     description: Full Azure resource id path (starts with /subscriptions/...).
+    required: false
+  azure_resource_ids:
+    description: Comma/newline full Azure resource ids for batch collection.
     required: false
   azure_subscription_id:
     description: Azure subscription id. Falls back to AZURE_SUBSCRIPTION_ID.
@@ -89,8 +98,14 @@ inputs:
   gcp_metric_type:
     description: Metric type (example compute.googleapis.com/instance/cpu/utilization).
     required: false
+  gcp_metric_types:
+    description: Comma/newline GCP metric types for batch collection.
+    required: false
   gcp_resource_id:
     description: Instance id / resource label used in the GCP filter.
+    required: false
+  gcp_resource_ids:
+    description: Comma/newline instance ids / resource labels for batch collection.
     required: false
   prometheus_enabled:
     description: Query Prometheus query_range. Requires prometheus_url and queries.
@@ -101,6 +116,9 @@ inputs:
     required: false
   prometheus_resource_id:
     description: Stable resource id for Prometheus-backed evidence.
+    required: false
+  prometheus_resource_ids:
+    description: Comma/newline stable resource ids for Prometheus result series.
     required: false
   prometheus_queries_path:
     description: Path to YAML/JSON array of {name, query, kind, unit?} queries.

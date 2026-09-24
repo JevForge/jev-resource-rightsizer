@@ -11,7 +11,7 @@ Teams often guess at instance and container sizes. Underutilized fleets waste mo
 
 ```yaml
 - id: size
-  uses: JevForge/jev-resource-rightsizer@v0.1.6
+  uses: JevForge/jev-resource-rightsizer@v0.1.7
   env:
     AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
   with:
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.6
+        uses: JevForge/jev-resource-rightsizer@v0.1.7
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -115,7 +115,7 @@ jobs:
           echo "summary=${{ steps.size.outputs.summary }}"
 ```
 
-Pin `@v0.1.6` for reproducibility, or `@v0` for the floating major line.
+Pin `@v0.1.7` for reproducibility, or `@v0` for the floating major line.
 
 ## Complete Example
 
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: size
-        uses: JevForge/jev-resource-rightsizer@v0.1.1
+        uses: JevForge/jev-resource-rightsizer@v0.1.7
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         with:
@@ -194,16 +194,21 @@ More workflows: [`examples/basic.yml`](examples/basic.yml), [`examples/pr-gate.y
 | `cloudwatch_enabled` | no | `false` | Query AWS CloudWatch |
 | `cloudwatch_namespace` | no | — | e.g. `AWS/EC2` |
 | `cloudwatch_metric_name` | no | — | e.g. `CPUUtilization` |
+| `cloudwatch_metric_names` | no | — | Comma/newline metric names for batch collection |
 | `cloudwatch_dimensions` | no | — | `Name=Value` pairs or JSON array |
 | `cloudwatch_resource_id` | no | — | Stable id for outputs |
+| `cloudwatch_resource_ids` | no | — | Comma/newline resource ids for batch collection |
 | `azure_enabled` | no | `false` | Query Azure Monitor |
 | `azure_resource_id` | no | — | Full Azure resource id |
+| `azure_resource_ids` | no | — | Comma/newline full Azure resource ids |
 | `azure_metric_names` | no | `Percentage CPU` | Comma/newline metric names |
 | `gcp_enabled` | no | `false` | Query GCP Monitoring |
 | `gcp_project_id` / `gcp_metric_type` / `gcp_resource_id` | no | — | GCP query target |
+| `gcp_metric_types` / `gcp_resource_ids` | no | — | Comma/newline GCP batch query targets |
 | `prometheus_enabled` | no | `false` | Query Prometheus `query_range` |
 | `prometheus_url` | no | — | HTTPS base URL (localhost allowed) |
 | `prometheus_resource_id` | no | — | Stable id for outputs |
+| `prometheus_resource_ids` | no | — | Comma/newline ids from Prometheus result labels |
 | `prometheus_queries_path` | no | — | YAML/JSON query list |
 | `include_resources` | no | — | Comma/newline globs for resource id, service, or resource kind to include |
 | `exclude_resources` | no | — | Comma/newline globs for resource id, service, or resource kind to exclude |
@@ -342,7 +347,7 @@ See [`SECURITY.md`](SECURITY.md).
 ## Versioning
 
 ```yaml
-uses: JevForge/jev-resource-rightsizer@v0.1.6   # recommended pin
+uses: JevForge/jev-resource-rightsizer@v0.1.7   # recommended pin
 uses: JevForge/jev-resource-rightsizer@v0       # floating major (v0.x)
 ```
 
